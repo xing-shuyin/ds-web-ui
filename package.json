@@ -17,7 +17,8 @@
     "build": "npm run build:web",
     "build:web": "vite build --config web/vite.config.ts",
     "prepublishOnly": "npm run build:web",
-    "prepack": "npm run build:web"
+    "prepack": "npm run build:web",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh-agent-spine-demo": "^0.1.0-rc.6",
