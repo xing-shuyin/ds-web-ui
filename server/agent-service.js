@@ -1055,15 +1055,18 @@ export class ClientSession {
 			return;
 		}
 		const abs = wp.abs;
+		// Protocol paths use forward slashes on every platform; the pi-web-ui
+		// front-end compares m.path against its own '/' joined request path.
+		const rel = wp.rel ? wp.rel.split(sep).join("/") : "";
 		const { entries, truncated } = listDirSafe(abs, this.cwd);
 		this.emit({
 			type: "files",
-			path: wp.rel || "",
-			parent: wp.rel ? dirname(wp.rel) : null,
+			path: rel,
+			parent: rel ? dirname(rel) : null,
 			entries,
 			truncated,
 		});
-		this.watchDir(abs, wp.rel || "");
+		this.watchDir(abs, rel);
 	}
 
 	async readFile(path) {
@@ -1100,7 +1103,7 @@ export class ClientSession {
 			const lines = text ? text.split("\n").length : 0;
 			this.emit({
 				type: "file_content",
-				path: wp.rel,
+				path: wp.rel.split(sep).join("/"),
 				name: basename(abs),
 				kind,
 				text,
