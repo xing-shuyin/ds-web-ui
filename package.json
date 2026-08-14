@@ -56,7 +56,8 @@
     "vendor/runtime/cordis.yml",
     "vendor/runtime/dsh-jsonrpc-agent-launcher.js",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "README.en.md"
   ],
   "repository": {
     "type": "git",

@@ -1,16 +1,12 @@
 # ds-web-ui
 
-A web chat interface for **DeepSeek Harness (DSH)** — the agent runs out-of-process
-via the official DSH stdio JSON-RPC runtime (bundled in pure Node, works on
-Windows / macOS / Linux) and streams events to the browser over WebSocket. The UI
-is faithfully ported from [pi-web-ui](https://github.com/xing-shuyin/pi-web-ui)
-(same front-end bundle, same WebSocket protocol, 100% restored styling and
-interaction); the agent backend is swapped from the pi SDK to the **DSH runtime**.
-All JavaScript, no Python.
+**简体中文** | [English](README.en.md)
 
-## Screenshots
+为 **DeepSeek Harness (DSH)** 打造的 Web 聊天界面。agent 通过官方 DSH stdio JSON-RPC runtime（纯 Node 实现，随包自带，Windows / macOS / Linux 均可运行）在子进程中执行，事件经 WebSocket 流式推送到浏览器。界面从 [pi-web-ui](https://github.com/xing-shuyin/pi-web-ui) 忠实移植（同一前端、同一套 WebSocket 协议，样式与交互 100% 还原）；agent 后端从 pi SDK 换成 **DSH runtime**。**全 JavaScript，零 Python 依赖。**
 
-![ds-web-ui main interface](https://cdn.jsdelivr.net/gh/xing-shuyin/ds-web-ui@master/assets/shot.png)
+## 界面截图
+
+![ds-web-ui 主界面](https://cdn.jsdelivr.net/gh/xing-shuyin/ds-web-ui@master/assets/shot.jpeg)
 
 ## 特性
 
@@ -22,7 +18,7 @@ All JavaScript, no Python.
 - 📊 状态栏：token 用量、上下文占用（1M 窗口）、花费估算
 - ⚙️ 模型切换：deepseek-v4-flash / deepseek-v4-pro
 
-## Install
+## 安装
 
 ```bash
 npm i -g ds-web-ui            # 全局安装（推荐）
@@ -30,7 +26,7 @@ npx --yes ds-web-ui           # 或免安装直接运行（最新版，默认 :8
 git clone git@github.com:xing-shuyin/ds-web-ui.git && cd ds-web-ui && npm install
 ```
 
-## Start
+## 启动
 
 ```bash
 ds-web-ui                                  # 前台运行，http://localhost:8989
