@@ -26,6 +26,8 @@ import {
 	watch,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { zstdDecompressSync } from "node:zlib";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { DshRuntime, DshRpcError, DshTransportError } from "./dsh-client.js";
@@ -91,6 +93,26 @@ const IGNORED_ENTRIES_WIN = new Set([
 ]);
 const ignoredEntries = () =>
 	process.platform === "win32" ? IGNORED_ENTRIES_WIN : IGNORED_ENTRIES;
+
+/** Installed package version from package.json (read once). */
+const PKG_VERSION = (() => {
+	try {
+		return JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")).version ?? "0.0.0";
+	} catch {
+		return "0.0.0";
+	}
+})();
+const packageVersion = () => PKG_VERSION;
+
+/** Simple numeric semver compare: is a >= b? (handles x.y.z, prerelease ignored) */
+function isVersionAtLeast(a, b) {
+	const pa = String(a).split("-")[0].split(".").map(Number);
+	const pb = String(b).split("-")[0].split(".").map(Number);
+	for (let i = 0; i < 3; i++) {
+		if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+	}
+	return true;
+}
 
 /** Estimate cumulative USD cost from per-request token usage. */
 function estimateCost(t) {
@@ -282,7 +304,12 @@ function decodeStorageRecord(value) {
 
 /** Read a session JSONL file → { header, events } (events in log order). */
 export function readSessionLog(file) {
-	const lines = readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
+	const raw = readFileSync(file);
+	// Legacy sessions were written zstd-compressed by the runtime.
+	const text = file.endsWith(".jsonl.zstd")
+		? zstdDecompressSync(raw).toString("utf8")
+		: raw.toString("utf8");
+	const lines = text.split("\n").filter((l) => l.trim());
 	let header = null;
 	const events = [];
 	for (const line of lines) {
@@ -316,7 +343,7 @@ export function findSessionFiles(root) {
 		for (const e of entries) {
 			const full = join(dir, e.name);
 			if (e.isDirectory()) walk(full);
-			else if (e.name.endsWith(".jsonl")) out.push(full);
+			else if (e.name.endsWith(".jsonl") || e.name.endsWith(".jsonl.zstd")) out.push(full);
 		}
 	};
 	walk(root);
@@ -1355,12 +1382,31 @@ export class ClientSession {
 	}
 
 	async checkUpdate() {
+		// Report the installed version and whether a newer one exists on npm —
+		// no in-app update (pi-web-ui feature we don't ship).
+		const current = packageVersion();
+		let latest = null;
+		let upToDate = true;
+		try {
+			const res = await fetch("https://registry.npmjs.org/ds-web-ui/latest", {
+				signal: AbortSignal.timeout(10_000),
+			});
+			if (res.ok) {
+				const body = await res.json();
+				latest = body.version ?? null;
+				if (latest && latest !== current) {
+					upToDate = isVersionAtLeast(current, latest);
+				}
+			}
+		} catch {
+			// registry unreachable — report what we know
+		}
 		this.emit({
 			type: "update_status",
-			current: "0.1.0",
-			latest: null,
+			current,
+			latest,
 			latestPublishedAt: null,
-			upToDate: true,
+			upToDate,
 			pendingRestart: false,
 		});
 	}

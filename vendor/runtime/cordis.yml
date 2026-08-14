@@ -33,6 +33,8 @@
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
   config:
     root: !!js process.env.DSH_SESSION_ROOT ?? './.sessions'
+    # Plain JSONL (not zstd) so the browser's session list can read it back.
+    compression: 'none'
 
 # Persistence owns durable storage; this separate policy explicitly selects
 # the request, tool-dispatch, and completed-step durability checkpoints.

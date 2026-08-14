@@ -59,8 +59,6 @@ export function TopBar({
 	const [langOpen, setLangOpen] = useState(false);
 	const [updateOpen, setUpdateOpen] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
-	/** Two-step arm before 立即更新 actually runs npm i -g. */
-	const [updateArmed, setUpdateArmed] = useState(false);
 
 	const LANGUAGES: { value: Locale; label: string }[] = [
 		{ value: "zh", label: t("langZh") },
@@ -136,27 +134,6 @@ export function TopBar({
 				>
 					{chat.update === null ? t("checkingUpdate") : t("checkUpdate")}
 				</button>
-				{chat.update &&
-					!chat.update.pendingRestart &&
-					!chat.update.upToDate &&
-					chat.update.latest && (
-						<button
-							type="button"
-							className={`dd-refresh accent ${updateArmed ? "armed" : ""}`}
-							onClick={() => {
-								if (!updateArmed) {
-									setUpdateArmed(true);
-									return;
-								}
-								setUpdateArmed(false);
-								setUpdateOpen(false);
-								setMoreOpen(false);
-								send({ type: "update_app" });
-							}}
-						>
-							{updateArmed ? t("confirmUpdate") : t("updateNow")}
-						</button>
-					)}
 			</div>
 		</>
 	);
