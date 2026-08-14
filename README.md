@@ -17,7 +17,7 @@ Web 聊天界面，为 **DeepSeek Harness (DSH)** 打造。UI 从 [pi-web-ui](ht
 ```bash
 npm install          # 安装依赖
 export DEEPSEEK_API_KEY="sk-..."     # 或写入 ~/.ds-web/dsh-key.json
-npm start            # http://localhost:8787
+npm start            # http://localhost:8989
 ```
 
 ### API Key 配置（三选一）
@@ -31,11 +31,11 @@ npm start            # http://localhost:8787
 
 ### DSH runtime 二进制
 
-后端直接 spawn 官方 `dsh-jsonrpc-agent` 单文件可执行（stdio JSON-RPC）。按顺序探测：
+后端 spawn 官方 `dsh-jsonrpc-agent`（stdio JSON-RPC）。项目自带 **Node 版 runtime**（`vendor/runtime/`，Windows/macOS/Linux 均可直接运行，无需 Python），按顺序探测：
 
 1. `DSH_RUNTIME_BIN` 环境变量
-2. `pip install deepseek-harness-sdk==0.1.0rc6 -i https://pypi.org/simple/` 安装的自带 runtime（`deepseek_harness_runtime/runtime/dsh-jsonrpc-agent-*`）
-3. 项目 `vendor/runtime/`
+2. 项目 `vendor/runtime/`（自带 Node 启动器 + cordis.yml + `@deepseek-ai/dsh-sdk-jsonrpc-*` 插件，随 npm install 安装）
+3. `pip install deepseek-harness-sdk` 安装的 Python 单文件 runtime（`deepseek_harness_runtime/runtime/dsh-jsonrpc-agent-*`，仅 Linux/macOS）
 
 `cordis.yml` 默认取 runtime 同目录的捆绑配置；可用 `DSH_CORDIS_CONFIG` 覆盖。
 
@@ -43,10 +43,10 @@ npm start            # http://localhost:8787
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `PORT` | 8787 | HTTP 端口 |
+| `DS_WEB_PORT` | 8989 | HTTP 端口（兼容 `PORT`） |
 | `DS_WEB_CWD` | 进程 cwd | agent 工作目录 |
 | `DS_WEB_DATA_DIR` | `~/.ds-web` | 会话 JSONL、客户端状态、密钥文件 |
-| `DSH_RUNTIME_BIN` | 自动探测 | runtime 可执行路径 |
+| `DSH_RUNTIME_BIN` | 自动探测（vendor/runtime 自带） | runtime 可执行路径 |
 | `DSH_CORDIS_CONFIG` | runtime 旁 cordis.yml | DSH 插件组合配置 |
 | `DEEPSEEK_API_KEY` | - | DeepSeek API 密钥 |
 | `DEEPSEEK_BASE_URL` | 官方 API | 可指向本地代理 |

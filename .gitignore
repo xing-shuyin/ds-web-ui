@@ -2,4 +2,7 @@ node_modules/
 *.log
 .DS_Store
 .piapi/
-vendor/runtime/
+# DSH runtime: ignore downloaded binaries, keep the Node launcher + config
+vendor/runtime/*
+!vendor/runtime/cordis.yml
+!vendor/runtime/dsh-jsonrpc-agent-launcher.js

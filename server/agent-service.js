@@ -1167,12 +1167,12 @@ export class ClientSession {
 	// -- commands file (.pi/commands.json) ------------------------------------
 
 	async listCommands() {
-		const { commands, path } = loadCommands(this.cwd);
+		const { commands, path } = await loadCommands(this.cwd);
 		this.emit({ type: "commands", commands, path });
 	}
 
 	async saveCommands(commands) {
-		const { path } = saveCommandsFile(this.cwd, commands);
+		const { path } = await saveCommandsFile(this.cwd, commands);
 		this.emit({ type: "commands", commands, path });
 	}
 

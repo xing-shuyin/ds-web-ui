@@ -157,7 +157,11 @@ export class DshRuntime {
 			...this.env,
 		};
 		if (this.sessionRoot) env.DSH_SESSION_ROOT = this.sessionRoot;
-		this.proc = spawn(bin, [cordis], {
+		// Node launcher (.js): run through process.execPath so it works on
+		// Windows; .cmd/.bat shims would otherwise need cmd.exe /c.
+		const runCmd = /[\\/][^\\/]*\.js$/i.test(bin) ? process.execPath : bin;
+		const runArgs = runCmd === process.execPath ? [bin, cordis] : [cordis];
+		this.proc = spawn(runCmd, runArgs, {
 			env,
 			stdio: ["pipe", "pipe", "pipe"],
 		});
