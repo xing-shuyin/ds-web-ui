@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- ds-web-ui favicon: violet rounded square + white letter D (drawn as
-       paths, no font dependency) -->
-  <rect width="64" height="64" rx="14" fill="#8b5cf6"/>
-  <path d="M18 17 h8 a14 14 0 0 1 0 30 h-8 z" fill="#ffffff"/>
-</svg>
