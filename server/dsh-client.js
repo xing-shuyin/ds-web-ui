@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export class DshRpcError extends Error {
 	constructor(message, code, data) {
@@ -81,8 +82,9 @@ export function resolveRuntimeBin() {
 			}
 		}
 	}
-	// Local vendor fallback.
-	const local = resolve("vendor/runtime");
+	// Local vendor fallback — anchored to this file (<repo>/server/..), not
+	// process.cwd(), so global installs work from any launch directory.
+	const local = resolve(fileURLToPath(new URL("../vendor/runtime/", import.meta.url)));
 	if (existsSync(local)) {
 		for (const entry of readdirSync(local)) {
 			if (entry.startsWith("dsh-jsonrpc-agent-")) {
