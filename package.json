@@ -15,7 +15,9 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "build": "npm run build:web",
-    "build:web": "vite build --config web/vite.config.ts"
+    "build:web": "vite build --config web/vite.config.ts",
+    "prepublishOnly": "npm run build:web",
+    "prepack": "npm run build:web"
   },
   "dependencies": {
     "@deepseek-ai/dsh-agent-spine-demo": "^0.1.0-rc.6",
@@ -47,5 +49,31 @@
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.3"
-  }
+  },
+  "files": [
+    "server/",
+    "web/dist/",
+    "vendor/runtime/cordis.yml",
+    "vendor/runtime/dsh-jsonrpc-agent-launcher.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xing-shuyin/ds-web-ui.git"
+  },
+  "homepage": "https://github.com/xing-shuyin/ds-web-ui",
+  "bugs": {
+    "url": "https://github.com/xing-shuyin/ds-web-ui/issues"
+  },
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "web-ui",
+    "chat",
+    "agent",
+    "coding-agent",
+    "pi-web-ui"
+  ]
 }
