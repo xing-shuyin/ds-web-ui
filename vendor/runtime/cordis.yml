@@ -1,5 +1,9 @@
 # Bundled default config for the ds-web-ui jsonrpc runtime (from the official
-# DeepSeek Harness SDK runtime bundle, 0.1.0-rc.6).
+# DeepSeek Harness SDK runtime bundle, 0.1.0-rc.6), adapted so it also works
+# on Windows: the SDK bundle is Linux/macOS-only and mounts bash, but the Node
+# runtime runs on Windows too — where there is no bash, so the shell executor
+# and tool swap to PowerShell (dsh-pwsh-local + dsh-tool-pwsh). Both executors
+# register the same `ctx.shell` seam; exactly one is enabled per platform.
 
 # Stdio JSON-RPC server entry; without it the agent has no SDK client.
 - id: sdk-jsonrpc-server
@@ -11,6 +15,9 @@
   config:
     workspaceContext:
       maxBytes: 65536
+    # Windows has no bash: disable the bash tool there; dsh-tool-pwsh below
+    # takes over (same story as the official pwsh example composition).
+    toolBash: !!js process.platform === 'win32' ? false : { timeoutMs: 60000 }
 
 # Stock DeepSeek adapters. The adapter resolves DEEPSEEK_API_KEY through the
 # credential seam and, with no provider mounted here, from the launching
@@ -29,15 +36,28 @@
 - id: session-checkpoints
   name: '@deepseek-ai/dsh-session-checkpoint-policy'
 
-# Local bash executor; $DSH_CWD wins over the process cwd.
-# Managed child-process groups for the bash executor (spawn/kill/output plumbing).
+# Managed child-process groups for the shell executor (spawn/kill/output plumbing).
 - id: subprocess
   name: '@deepseek-ai/dsh-subprocess-local'
 
+# Shell executor — one provider of `ctx.shell` per platform:
+# bash on POSIX, PowerShell on Windows.
 - id: bash
   name: '@deepseek-ai/dsh-bash-local'
+  disabled: !!js process.platform === 'win32'
   config:
     cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+- id: pwsh
+  name: '@deepseek-ai/dsh-pwsh-local'
+  disabled: !!js process.platform !== 'win32'
+  config:
+    cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+# Model-facing PowerShell tool (Windows only; the bash tool is disabled above).
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
 
 # Local filesystem provider for workspace instruction loading. This does not
 # expose model-facing file tools by itself.
