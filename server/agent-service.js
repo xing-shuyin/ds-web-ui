@@ -101,9 +101,12 @@ export function previewKind(name) {
 
 /** Resolve a workspace-relative request path safely. Returns {abs, rel} or null. */
 export function workspacePath(wsRoot, raw) {
-	if (!wsRoot || typeof raw !== "string" || raw.length === 0) return null;
+	if (!wsRoot || typeof raw !== "string") return null;
 	const root = resolve(wsRoot);
-	const abs = resolve(root, raw);
+	const rel = raw.trim();
+	// Empty/whitespace path = the workspace root itself (front-end root request).
+	if (rel === "") return { abs: root, rel: "" };
+	const abs = resolve(root, rel);
 	if (abs !== root && !abs.startsWith(root + sep)) return null;
 	return { abs, rel: relative(root, abs) };
 }
@@ -1101,6 +1104,7 @@ export class ClientSession {
 				name: basename(abs),
 				kind,
 				text,
+				content: text, // pi-web-ui protocol field (front-end reads t.content)
 				truncated,
 				binary,
 				lines,
