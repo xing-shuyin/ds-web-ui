@@ -290,7 +290,7 @@ export function TopBar({
 
 					<a
 						className="chip github"
-						href="https://github.com/xing-shuyin/pi-web-ui"
+						href="https://github.com/xing-shuyin/ds-web-ui"
 						target="_blank"
 						rel="noreferrer noopener"
 						title={t("githubRepo")}
@@ -351,7 +351,7 @@ export function TopBar({
 						{renderUpdateBody()}
 						<a
 							className="dd-refresh dd-more-link"
-							href="https://github.com/xing-shuyin/pi-web-ui"
+							href="https://github.com/xing-shuyin/ds-web-ui"
 							target="_blank"
 							rel="noreferrer noopener"
 						>

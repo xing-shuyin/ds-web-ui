@@ -29,7 +29,7 @@ const zh = {
 	language: "语言",
 	langZh: "中文",
 	langEn: "English",
-	githubRepo: "GitHub 仓库（xing-shuyin/pi-web-ui）",
+	githubRepo: "GitHub 仓库（xing-shuyin/ds-web-ui）",
 	copy: "复制",
 
 	/* topbar */
@@ -341,7 +341,7 @@ const en: Record<keyof typeof zh, string> = {
 	language: "Language",
 	langZh: "中文",
 	langEn: "English",
-	githubRepo: "GitHub repository (xing-shuyin/pi-web-ui)",
+	githubRepo: "GitHub repository (xing-shuyin/ds-web-ui)",
 	copy: "Copy",
 
 	/* topbar */
