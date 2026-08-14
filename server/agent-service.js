@@ -302,12 +302,35 @@ function decodeStorageRecord(value) {
 	return [value];
 }
 
+/** Decompress a possibly multi-frame zstd buffer. The runtime appends one
+ *  frame per write batch; zstdDecompressSync only handles the first frame,
+ *  which would silently drop every event after the session header. */
+function zstdDecompressAll(buf) {
+	const MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+	const starts = [];
+	for (let i = 0; i + 4 <= buf.length; i++) {
+		if (buf[i] === MAGIC[0] && buf[i + 1] === MAGIC[1] && buf[i + 2] === MAGIC[2] && buf[i + 3] === MAGIC[3]) {
+			starts.push(i);
+		}
+	}
+	let out = "";
+	for (let i = 0; i < starts.length; i++) {
+		const from = starts[i];
+		const to = i + 1 < starts.length ? starts[i + 1] : buf.length;
+		try {
+			out += zstdDecompressSync(buf.subarray(from, to)).toString("utf8");
+		} catch {
+			/* skip unreadable frame */
+		}
+	}
+	return out || buf.toString("utf8");
+}
 /** Read a session JSONL file → { header, events } (events in log order). */
 export function readSessionLog(file) {
 	const raw = readFileSync(file);
-	// Legacy sessions were written zstd-compressed by the runtime.
+	// The runtime appends one zstd frame per write batch — decompress them all.
 	const text = file.endsWith(".jsonl.zstd")
-		? zstdDecompressSync(raw).toString("utf8")
+		? zstdDecompressAll(raw)
 		: raw.toString("utf8");
 	const lines = text.split("\n").filter((l) => l.trim());
 	let header = null;
@@ -553,13 +576,17 @@ class Conversation {
 			}
 			case "turn/end": {
 				const reason = ev.data?.reason;
-				if (reason?.kind === "error") {
-					this.errorMessage =
-						reason.error?.message ?? "回合失败（provider 错误）";
-				} else {
-					this.errorMessage = undefined;
-				}
-				this.stream = null;
+			if (reason?.kind === "error") {
+				const msg = reason.error?.message ?? "回合失败（provider 错误）";
+				this.errorMessage = msg;
+				// Resuming a persisted session is impossible over the DSH SDK
+				// wire (jsonrpc-server always creates; a disk log is an id
+				// collision). Ask the client to continue in a fresh session.
+				if (/persisted log/i.test(msg)) this.client.handlePersistedCollision?.();
+			} else {
+				this.errorMessage = undefined;
+			}
+			this.stream = null;
 				break;
 			}
 			case "request/header": {
@@ -648,7 +675,10 @@ export class ClientSession {
 		this.watchPath = null;
 		this.watchTimer = null;
 
-		this.sessionRoot = join(this.dataDir, "sessions", encodeURIComponent(cwd));
+		// DSH runtime expects the session ROOT here; it appends its own
+		// projectKey(cwd) directory (--<cwd>--). Root doubles as the
+		// findSessionFiles base so both layouts are discoverable.
+		this.sessionRoot = join(this.dataDir, "sessions");
 	}
 
 	static async create(clientId, cwd, dataDir, stateStore, emit) {
@@ -780,12 +810,14 @@ export class ClientSession {
 
 	async resumeRecent() {
 		const files = findSessionFiles(this.sessionRoot);
-		const file = files[0];
-		if (file) {
-			await this.openSessionFile(file, true);
-		} else {
-			this.makeConversation(`web-${randomUUID()}`);
+		// Resume the newest session that actually has messages. Broken/empty
+		// logs (e.g. legacy zstd files with only a header) would make the DSH
+		// runtime reject the live session with an id collision.
+		for (const file of files.slice(0, 10)) {
+			const conv = await this.openSessionFile(file, true);
+			if (conv && conv.messages.length > 0) return;
 		}
+		this.makeConversation(`web-${randomUUID()}`);
 	}
 
 	/** Replay a session JSONL into a conversation (fresh or resumed). */
@@ -795,6 +827,12 @@ export class ClientSession {
 			log = readSessionLog(file);
 		} catch (err) {
 			this.emit({ type: "notice", level: "error", text: `会话读取失败：${err.message}` });
+			return null;
+		}
+		// Empty logs (e.g. legacy zstd files holding only a header) cannot be
+		// resumed — the DSH runtime rejects the id as a disk/live mismatch.
+		if (log.events.length === 0) {
+			this.emit({ type: "notice", level: "warning", text: "该会话没有可恢复的内容（日志为空）。" });
 			return null;
 		}
 		const sessionId = log.header?.id ?? `web-${randomUUID()}`;
@@ -957,6 +995,25 @@ export class ClientSession {
 		try {
 			conv.lastPromptMessageId = await this.runtime.prompt(conv.sessionId, blocks);
 		} catch (err) {
+			// Resuming a persisted session is not supported by the DSH SDK wire
+			// protocol (jsonrpc-server always creates; disk log → id collision).
+			// Continue in a brand-new session instead of failing.
+			if (err instanceof DshRpcError && /persisted log/i.test(err.message)) {
+				const fresh = this.makeConversation(`web-${randomUUID()}`);
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: "历史会话无法直接续聊（DSH SDK 协议限制），已自动新建会话继续。",
+				});
+				this.flushSnapshot();
+				try {
+					fresh.lastPromptMessageId = await this.runtime.prompt(fresh.sessionId, blocks);
+				} catch (err2) {
+					this.emit({ type: "notice", level: "error", text: `发送失败：${err2.message}` });
+					if (err2 instanceof DshTransportError) await this.initRuntime();
+				}
+				return;
+			}
 			this.emit({ type: "notice", level: "error", text: `发送失败：${err.message}` });
 			// Runtime may have died — attempt one restart.
 			if (err instanceof DshTransportError) {
@@ -1045,7 +1102,6 @@ export class ClientSession {
 		if (resolve(abs) === resolve(this.cwd)) return;
 		this.cwd = resolve(abs);
 		this.stateStore.recordProject(this.cwd);
-		this.sessionRoot = join(this.dataDir, "sessions", encodeURIComponent(this.cwd));
 		// Rebuild runtime + conversation for the new workspace.
 		await this.initRuntime();
 		await this.resumeRecent();
@@ -1075,7 +1131,8 @@ export class ClientSession {
 				const { header, events } = readSessionLog(file);
 				sessions.push({
 					path: file,
-					name: header?.id,
+					// Session title = first user message (front-end prefers `name`).
+					name: eventsTitle(events),
 					firstMessage: eventsTitle(events),
 					messageCount: events.filter((e) =>
 						e.type === "user/message" || e.type === "assistant/message" ||
@@ -1088,6 +1145,32 @@ export class ClientSession {
 			}
 		}
 		this.emit({ type: "sessions", sessions });
+	}
+	/** Continue a conversation whose persisted session id collides on the DSH
+	 *  runtime: re-send the last user message in a brand-new session. */
+	async handlePersistedCollision() {
+		const conv = this.activeConv;
+		const lastUser = [...conv.messages].reverse().find((m) => m.role === "user");
+		const text = lastUser
+			? (lastUser.content || [])
+					.map((b) => (b.type === "text" ? b.text : ""))
+					.join("")
+					.trim()
+			: "";
+		if (!text) return;
+		const fresh = this.makeConversation(`web-${randomUUID()}`);
+		this.emit({
+			type: "notice",
+			level: "info",
+			text: "历史会话无法直接续聊（DSH 协议限制），已自动新建会话继续。",
+		});
+		try {
+			await this.runtime.prompt(fresh.sessionId, [{ type: "text", text }]);
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: `发送失败：${err.message}` });
+			if (err instanceof DshTransportError) await this.initRuntime();
+		}
+		this.flushSnapshot();
 	}
 
 	async switchSession(path) {

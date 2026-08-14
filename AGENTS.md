@@ -109,6 +109,32 @@ DeepSeek V4 模型（deepseek-v4-flash / deepseek-v4-pro）
 | `session.status` (running/idle) | isStreaming |
 | `turn/end` reason.error | 错误横幅 |
 
+## 4.5 问题排查第一参考：官方仓库
+
+遇到 DSH runtime / 协议 / 前端行为问题，**先看 `E:\deepseek-harness`**（官方 deepseek-ai/deepseek-harness 源码仓库，本机已 clone）：
+
+- `apps/web/` + `packages/client/`：官方 web UI 完整实现（协议、组件、状态管理的事实来源）
+- `packages/llm/llm-deepseek/`：模型目录、`DEFAULT_CONTEXT_WINDOW = 1_000_000` 等事实常量
+- `packages/session*`、`packages/agent*`：会话持久化 / agent 生命周期（resume/create、id collision 等）
+- `packages/examples/`：jsonrpc-demo（dsh-jsonrpc-agent Node 入口）、headless、acp 示例组合
+- `python/sdk-runtime/`：SDK 捆绑 cordis.yml（本仓库 vendor/runtime/cordis.yml 的源头）
+- `apps/cli/config/agent-presets/`：官方 agent 组合（bash/pwsh 平台切换、persona 等的正确写法）
+- 官方 web 的 npm 包本体在 `node_modules/@deepseek-ai/*`（0.1.0-rc.6），问题定位先看这里；
+  仓库源码更新（master）可能是 npm 发布版的后续
+
+## 4.5 官方仓库参考（deepseek-ai/deepseek-harness）
+
+本项目的 agent 后端（DSH runtime / 协议 / 插件组合）以官方实现为参照，**改 runtime 相关行为前，先对照官方仓库的正确写法再动手**，不要凭猜测改 cordis.yml / 协议字段。
+
+- 仓库：https://github.com/deepseek-ai/deepseek-harness（本机已 clone 到 `E:\deepseek-harness`，upstream 指向官方）
+- `apps/web/` + `packages/client/`：官方 web UI 完整实现（协议、组件、状态管理）
+- `packages/llm/llm-deepseek/`：模型目录、`DEFAULT_CONTEXT_WINDOW = 1_000_000` 等事实常量
+- `packages/session*`、`packages/agent*`：会话持久化 / agent 生命周期（create / resume）
+- `packages/examples/jsonrpc-demo`：dsh-jsonrpc-agent Node 入口（本仓库 vendor/runtime launcher 的源头）
+- `python/sdk-runtime/`：SDK 捆绑 cordis.yml（本仓库 vendor/runtime/cordis.yml 的源头）
+- `apps/cli/config/agent-presets/`：官方 agent 组合（bash/pwsh 平台切换、persona 的正确写法）
+- 已安装的 npm 包本体在 `node_modules/@deepseek-ai/*`（0.1.0-rc.6）；仓库 master 可能比 npm 发布版新
+
 ## 5. Windows 兼容性（踩过的坑，务必遵守）
 
 1. **bin 入口必须有 `#!/usr/bin/env node` shebang**（`server/index.js` 第一行）。
