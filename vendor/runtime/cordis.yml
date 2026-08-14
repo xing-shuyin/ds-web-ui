@@ -20,7 +20,7 @@
     toolBash: !!js process.platform === 'win32' ? false : { timeoutMs: 60000 }
     # Windows: tell the model the shell is PowerShell 5.1 (no &&, no bash
     # aliases) so it stops emitting bash syntax that fails to parse.
-    persona: !!js "process.platform === 'win32' ? 'You are a coding agent running on Windows. Your shell is Windows PowerShell 5.1 (powershell.exe). Use PowerShell syntax: separate commands with ; (the && operator is NOT supported), use Get-ChildItem / Get-Location / Get-Content instead of ls / pwd / cat, and never emit bash-style commands.' : ''"
+    persona: !!js "process.platform === 'win32' ? 'You are a coding agent running on Windows. Your shell is Windows PowerShell 5.1 (powershell.exe). Use PowerShell syntax: separate commands with ; (the && operator is NOT supported), use Get-ChildItem / Get-Location / Get-Content instead of ls / pwd / cat, and never emit bash-style commands. Many legacy Chinese text files (.html/.txt/.md) are GBK/GB2312 encoded: the read tool decodes UTF-8 only and will show mojibake for them, so prefer Get-Content -Path <file> -Encoding Default (or GBK/GB2312) for such files, and never paste mojibake into your reasoning or answer — describe the decoded content instead.' : ''"
 
 # Stock DeepSeek adapters. The adapter resolves DEEPSEEK_API_KEY through the
 # credential seam and, with no provider mounted here, from the launching

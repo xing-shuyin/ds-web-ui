@@ -159,6 +159,20 @@ export function workspacePath(wsRoot, raw) {
 	return { abs, rel: relative(root, abs) };
 }
 
+/** Decode bytes: strict UTF-8, falling back to GBK (Windows legacy Chinese
+ *  files), then latin1 as a last resort. */
+function decodeText(buf) {
+	try {
+		return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+	} catch {
+		try {
+			return new TextDecoder("gbk").decode(buf);
+		} catch {
+			return buf.toString("latin1");
+		}
+	}
+}
+
 function listDirSafe(abs, wsRoot) {
 	try {
 		const entries = readdirSync(abs, { withFileTypes: true })
@@ -1149,9 +1163,10 @@ export class ClientSession {
 				const slice = buf.subarray(0, MAX_PREVIEW_BYTES);
 				if (slice.includes(0)) {
 					binary = true;
-					text = "";
 				} else {
-					text = slice.toString("utf8");
+					// UTF-8 first; fall back to GBK (Windows legacy Chinese files)
+					// when strict UTF-8 decoding fails.
+					text = decodeText(slice);
 				}
 			}
 			const lines = text ? text.split("\n").length : 0;
