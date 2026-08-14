@@ -55,6 +55,25 @@ const DSH_MODELS = [
 const DEFAULT_MODEL = "deepseek-v4-flash";
 const DEFAULT_PROVIDER = "deepseek-official";
 
+/** DeepSeek V4 context window (llm-deepseek DEFAULT_CONTEXT_WINDOW) and
+ *  official per-1M-token pricing in USD (api-docs.deepseek.com/quick_start/pricing).
+ *  V4-Flash rates; V4-Pro may differ — extend per model if needed. */
+const DSH_CONTEXT_WINDOW = 1_000_000;
+const DSH_PRICE_INPUT = 0.14; // per 1M, cache miss
+const DSH_PRICE_CACHE_READ = 0.0028; // per 1M, cache hit
+const DSH_PRICE_OUTPUT = 0.28; // per 1M
+
+/** Estimate cumulative USD cost from per-request token usage. */
+function estimateCost(t) {
+	if (!t || (t.total ?? 0) === 0) return 0;
+	return (
+		((t.input + (t.cacheWrite ?? 0)) * DSH_PRICE_INPUT +
+			(t.cacheRead ?? 0) * DSH_PRICE_CACHE_READ +
+			t.output * DSH_PRICE_OUTPUT) /
+		1e6
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Preview kind classification (from pi-web-ui)
 // ---------------------------------------------------------------------------
@@ -808,8 +827,12 @@ export class ClientSession {
 			stats: {
 				totalMessages: messages.length,
 				tokens: conv.tokens,
-				cost: 0,
-				contextUsage: { tokens: null, contextWindow: 0, percent: null },
+				cost: estimateCost(conv.tokens),
+				contextUsage: {
+					tokens: conv.tokens.total,
+					contextWindow: DSH_CONTEXT_WINDOW,
+					percent: Math.min(100, Math.round((conv.tokens.total / DSH_CONTEXT_WINDOW) * 100)),
+				},
 			},
 		};
 	}
