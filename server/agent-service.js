@@ -373,6 +373,40 @@ export function findSessionFiles(root) {
 	return out.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
 }
 
+/** projectKey(cwd) — mirrors the DSH runtime's session directory naming so
+ *  session listing is scoped to the current workspace. Separators become
+ *  "-", unsafe chars become ~XXXX (uppercase hex), wrapped in --…--. */
+function projectKey(cwd) {
+	let readable = "";
+	let separatorRun = false;
+	for (let i = 0; i < cwd.length; i++) {
+		const code = cwd.charCodeAt(i);
+		const ch = String.fromCharCode(code);
+		if (ch === "/" || ch === "\\" || ch === ":") {
+			if (!separatorRun) readable += "-";
+			separatorRun = true;
+		} else if (ch !== "~" && /^[A-Za-z0-9._-]$/.test(ch)) {
+			readable += ch;
+			separatorRun = false;
+		} else {
+			readable += "~" + code.toString(16).toUpperCase().padStart(4, "0");
+			separatorRun = false;
+		}
+	}
+	return `--${(readable.replace(/^-+/, "") || "root").slice(0, 251)}--`;
+}
+
+/** Session files for one workspace: official runtime layout (root/--<cwd>--)
+ *  plus the legacy per-cwd layout (root/<encoded-cwd>/--<cwd>--). */
+export function findSessionFilesForCwd(sessionRoot, cwd) {
+	const dirs = [
+		join(sessionRoot, projectKey(cwd)),
+		join(sessionRoot, encodeURIComponent(cwd), projectKey(cwd)),
+	];
+	const out = [];
+	for (const d of dirs) out.push(...findSessionFiles(d));
+	return out.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+}
 /** First user text in a list of DSH events, truncated for the session title. */
 function eventsTitle(events) {
 	for (const ev of events) {
@@ -809,7 +843,7 @@ export class ClientSession {
 	}
 
 	async resumeRecent() {
-		const files = findSessionFiles(this.sessionRoot);
+		const files = findSessionFilesForCwd(this.sessionRoot, this.cwd);
 		// Resume the newest session that actually has messages. Broken/empty
 		// logs (e.g. legacy zstd files with only a header) would make the DSH
 		// runtime reject the live session with an id collision.
@@ -1124,7 +1158,7 @@ export class ClientSession {
 	}
 
 	async refreshSessions() {
-		const files = findSessionFiles(this.sessionRoot);
+		const files = findSessionFilesForCwd(this.sessionRoot, this.cwd);
 		const sessions = [];
 		for (const file of files.slice(0, 100)) {
 			try {
