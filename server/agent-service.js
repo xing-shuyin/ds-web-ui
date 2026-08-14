@@ -1062,7 +1062,9 @@ export class ClientSession {
 		this.emit({
 			type: "files",
 			path: rel,
-			parent: rel ? dirname(rel) : null,
+			// Parent of a top-level dir is the workspace root (""), not "." — the
+			// front-end compares files.path against its request path exactly.
+			parent: rel ? (dirname(rel) === "." ? "" : dirname(rel)) : null,
 			entries,
 			truncated,
 		});
