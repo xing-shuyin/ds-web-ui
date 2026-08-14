@@ -25,7 +25,7 @@ import {
 	readdirSync,
 	watch,
 } from "node:fs";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { DshRuntime, DshRpcError, DshTransportError } from "./dsh-client.js";
@@ -62,6 +62,35 @@ const DSH_CONTEXT_WINDOW = 1_000_000;
 const DSH_PRICE_INPUT = 0.14; // per 1M, cache miss
 const DSH_PRICE_CACHE_READ = 0.0028; // per 1M, cache hit
 const DSH_PRICE_OUTPUT = 0.28; // per 1M
+
+/** Entries hidden from path completion (from pi-web-ui). */
+const IGNORED_ENTRIES = new Set([
+	"node_modules",
+	".git",
+	".svn",
+	".hg",
+	"dist",
+	".next",
+	".nuxt",
+	".cache",
+	".venv",
+	"venv",
+	"__pycache__",
+	"coverage",
+	".pi-web",
+	".DS_Store",
+	"Thumbs.db",
+]);
+const IGNORED_ENTRIES_WIN = new Set([
+	"node_modules",
+	".git",
+	".pi-web",
+	".DS_Store",
+	"Thumbs.db",
+	"desktop.ini",
+]);
+const ignoredEntries = () =>
+	process.platform === "win32" ? IGNORED_ENTRIES_WIN : IGNORED_ENTRIES;
 
 /** Estimate cumulative USD cost from per-request token usage. */
 function estimateCost(t) {
@@ -1172,28 +1201,68 @@ export class ClientSession {
 		this.watchPath = null;
 	}
 
-	async completePath(path) {
-		const wp = workspacePath(this.cwd, path);
-		if (!wp) {
+	async completePath(input) {
+		const empty = () =>
 			this.emit({ type: "path_completions", completions: [] });
-			return;
-		}
-		const abs = wp.abs;
-		const dir = existsSync(abs) && statSync(abs).isDirectory() ? abs : dirname(abs);
-		const prefix = basename(abs);
-		let entries = [];
 		try {
-			entries = readdirSync(dir, { withFileTypes: true })
-				.filter((e) => e.name.startsWith(prefix))
-				.map((e) => ({
-					name: e.name,
-					path: relative(this.cwd, join(dir, e.name)).split(sep).join("/"),
-					type: e.isDirectory() ? "dir" : "file",
-				}));
+			const home = homedir();
+			// Expand ~ and relative inputs to an absolute path. Windows users type
+			// backslashes (P:\agent) and ~\ — handle both separator styles.
+			let expanded = input.trim();
+			if (expanded === "") {
+				empty();
+				return;
+			}
+			// Bare drive letter ("E:") lists that drive's root — handle BEFORE
+			// resolve, which would treat "E:" as drive-relative (cwd) instead.
+			if (/^[a-zA-Z]:$/.test(expanded)) {
+				expanded += sep;
+			} else if (expanded === "~" || expanded === "~\\") {
+				expanded = home;
+			} else if (expanded.startsWith("~/") || expanded.startsWith("~\\")) {
+				expanded = home + sep + expanded.slice(2);
+			} else if (!isAbsolute(expanded)) {
+				expanded = resolve(this.cwd, expanded);
+			}
+			// Bare drive letter ("E:") lists that drive's root — handled BEFORE
+			// resolve, which would treat "E:" as drive-relative (cwd) instead.
+			// Split into parent dir + prefix on the LAST separator of either style.
+			const lastSlash = Math.max(
+				expanded.lastIndexOf("/"),
+				expanded.lastIndexOf("\\"),
+			);
+			const dirPart = lastSlash >= 0 ? expanded.slice(0, lastSlash + 1) : "";
+			const prefix = lastSlash >= 0 ? expanded.slice(lastSlash + 1) : expanded;
+			let dirents = null;
+			try {
+				dirents = readdirSync(dirPart, { withFileTypes: true });
+			} catch {
+				dirents = null;
+			}
+			if (!dirents) {
+				empty();
+				return;
+			}
+			const ignored = ignoredEntries();
+			const completions = dirents
+				.filter((d) => d.name.startsWith(prefix) && !ignored.has(d.name))
+				.map((d) => ({
+					name: d.name,
+					path: join(dirPart, d.name).split(sep).join("/"),
+					type: d.isDirectory() ? "dir" : "file",
+				}))
+				.sort((a, b) => {
+					const aHidden = a.name.startsWith(".");
+					const bHidden = b.name.startsWith(".");
+					if (aHidden !== bHidden) return aHidden ? 1 : -1;
+					if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+					return a.name.localeCompare(b.name);
+				})
+				.slice(0, 30);
+			this.emit({ type: "path_completions", completions });
 		} catch {
-			entries = [];
+			empty();
 		}
-		this.emit({ type: "path_completions", completions: entries });
 	}
 
 	// -- commands file (.pi/commands.json) ------------------------------------
