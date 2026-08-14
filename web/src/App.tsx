@@ -7,7 +7,6 @@ import { ChatInput } from "./components/ChatInput";
 import { FooterBar } from "./components/FooterBar";
 import { Dialog } from "./components/Dialog";
 import { TerminalPanel } from "./components/TerminalPanel";
-import { PiSetupModal } from "./components/PiSetupModal";
 import { ModelConfigModal } from "./components/ModelConfigModal";
 import { FilePreview, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
@@ -48,8 +47,7 @@ export function App() {
 	const [view, setView] = useState<"chat" | "terminal">("chat");
 	// Mobile: which side panel is open as a drawer (null = both closed).
 	const [drawer, setDrawer] = useState<"left" | "right" | null>(null);
-	// Setup modal: one-time prompt when the pi agent config is missing.
-	const [setupDismissed, setSetupDismissed] = useState(false);
+	// Custom model config panel (model dropdown → 管理模型).
 	// Custom model config panel (model dropdown → 管理模型).
 	const [manageModelsOpen, setManageModelsOpen] = useState(false);
 
@@ -332,19 +330,6 @@ export function App() {
 					onClose={() => setPreviewFile(null)}
 				/>
 			)}
-			{chat.ready &&
-				chat.state &&
-				chat.state.piConfigured === false &&
-				!setupDismissed &&
-				!manageModelsOpen && (
-					<PiSetupModal
-						send={send}
-						piConfigured={chat.state.piConfigured}
-						providers={chat.providers}
-						installResult={chat.installResult}
-						onClose={() => setSetupDismissed(true)}
-					/>
-				)}
 			{manageModelsOpen && (
 				<ModelConfigModal
 					send={send}

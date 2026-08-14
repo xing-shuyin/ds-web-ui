@@ -23,6 +23,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import express from "express";
+import { spawn } from "node:child_process";
 import { WebSocket, WebSocketServer } from "ws";
 import { AgentService, previewKind, workspacePath } from "./agent-service.js";
 
@@ -33,6 +34,28 @@ const PORT = Number(
 		? argv[argvPort + 1]
 		: (process.env.DS_WEB_PORT ?? process.env.PORT ?? 8989),
 );
+// Auto-open the browser unless opted out (--no-open or DS_WEB_NO_OPEN).
+const noOpen = argv.includes("--no-open") || Boolean(process.env.DS_WEB_NO_OPEN);
+
+/** Open the default browser to `url`, best-effort and non-blocking. */
+function openBrowser(url) {
+	try {
+		const { platform } = process;
+		if (platform === "win32") {
+			spawn("cmd", ["/c", "start", "", url], {
+				stdio: "ignore",
+				detached: true,
+				windowsHide: true,
+			}).unref();
+		} else if (platform === "darwin") {
+			spawn("open", [url], { stdio: "ignore", detached: true }).unref();
+		} else {
+			spawn("xdg-open", [url], { stdio: "ignore", detached: true }).unref();
+		}
+	} catch {
+		/* ignore */
+	}
+}
 const CWD = resolve(process.env.DS_WEB_CWD ?? process.cwd());
 const DATA_DIR = resolve(process.env.DS_WEB_DATA_DIR ?? join(homedir(), ".ds-web"));
 const SESSION_DIR_ROOT = join(DATA_DIR, "sessions");
@@ -278,6 +301,8 @@ httpServer.listen(PORT, () => {
 	console.log("  ⚡ ds-web-ui — web chat for DeepSeek Harness");
 	console.log(`    http://localhost:${PORT}`);
 	console.log(`    workspace   : ${CWD}`);
+	console.log("");
+	if (!noOpen) openBrowser(`http://localhost:${PORT}`);
 	console.log(`    session dir : ${SESSION_DIR_ROOT}`);
 	console.log("");
 });

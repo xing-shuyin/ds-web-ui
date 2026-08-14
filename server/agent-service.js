@@ -636,7 +636,7 @@ export class ClientSession {
 		}
 		// Reuse the pi agent's stored DeepSeek credential when present.
 		for (const authPath of [
-			join(process.env.HOME ?? "/root", ".pi", "agent", "auth.json"),
+			join(homedir(), ".pi", "agent", "auth.json"),
 		]) {
 			try {
 				const auth = JSON.parse(readFileSync(authPath, "utf8"));
@@ -848,7 +848,7 @@ export class ClientSession {
 		} catch {
 			try {
 				const auth = JSON.parse(
-					readFileSync(join(process.env.HOME ?? "/root", ".pi", "agent", "auth.json"), "utf8"),
+					readFileSync(join(homedir(), ".pi", "agent", "auth.json"), "utf8"),
 				);
 				configured = typeof auth?.deepseek?.key === "string" && auth.deepseek.key.length > 0;
 			} catch {
