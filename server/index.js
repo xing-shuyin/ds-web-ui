@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * ds-web-ui server entry — Web chat interface for DeepSeek Harness (DSH).
  *
