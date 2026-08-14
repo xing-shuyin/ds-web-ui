@@ -1,5 +1,11 @@
 # ds-web-ui
 
+<div align="center">
+
+<img src="docs/social-preview.png" alt="ds-web-ui — DeepSeek Harness Web Chat UI" width="100%">
+
+</div>
+
 **English** | [简体中文](https://github.com/xing-shuyin/ds-web-ui/blob/master/README.md)
 
 A web chat interface for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) — the agent runs
@@ -8,10 +14,6 @@ and streams events to the browser over WebSocket. Chat with thinking blocks and
 tool calls, attach files, use a built-in terminal, switch models, and more. The
 UI is faithfully ported from [pi-web-ui](https://github.com/xing-shuyin/pi-web-ui).
 Requires Node.js ≥ 22.19 and a valid DeepSeek API key.
-
-## Screenshots
-
-![ds-web-ui main interface](https://cdn.jsdelivr.net/gh/xing-shuyin/ds-web-ui@master/assets/shot.jpeg)
 
 ## Install
 

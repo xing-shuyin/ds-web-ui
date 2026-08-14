@@ -1,12 +1,14 @@
 # ds-web-ui
 
+<div align="center">
+
+<img src="docs/social-preview.png" alt="ds-web-ui — DeepSeek Harness Web Chat UI" width="100%">
+
+</div>
+
 **简体中文** | [English](https://github.com/xing-shuyin/ds-web-ui/blob/master/README.en.md)
 
 为 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 打造的 Web 聊天界面 —— agent 通过官方 DSH stdio JSON-RPC runtime（纯 Node，随包自带）在子进程中执行，事件经 WebSocket 流式推送到浏览器。支持思考块与工具调用、附件、内置终端、模型切换等。界面从 [pi-web-ui](https://github.com/xing-shuyin/pi-web-ui) 忠实移植。需要 Node.js ≥ 22.19 和一个有效的 DeepSeek API key。
-
-## 界面截图
-
-![ds-web-ui 主界面](https://cdn.jsdelivr.net/gh/xing-shuyin/ds-web-ui@master/assets/shot.jpeg)
 
 ## 安装
 
