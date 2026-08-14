@@ -1,6 +1,6 @@
 {
   "name": "ds-web-ui",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Web chat interface for DeepSeek Harness (DSH) — UI faithfully ported from pi-web-ui, agent backend swapped to the DSH stdio JSON-RPC runtime. All JavaScript, no Python.",
   "license": "MIT",
   "type": "module",
