@@ -20,6 +20,16 @@ export DEEPSEEK_API_KEY="sk-..."     # 或写入 ~/.ds-web/dsh-key.json
 npm start            # http://localhost:8989
 ```
 
+### 直接运行（无需 clone）
+
+```bash
+npx --yes ds-web-ui                 # http://localhost:8989
+npx --yes ds-web-ui --port 9099     # 指定端口
+npm i -g ds-web-ui && ds-web-ui
+```
+
+端口优先级：`--port` 参数 > `DS_WEB_PORT` > `PORT` > 8989。
+
 ### API Key 配置（三选一）
 
 1. 环境变量：`DEEPSEEK_API_KEY`（runtime 子进程自动继承）

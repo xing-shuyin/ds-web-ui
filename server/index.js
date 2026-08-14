@@ -25,7 +25,13 @@ import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { AgentService, previewKind, workspacePath } from "./agent-service.js";
 
-const PORT = Number(process.env.DS_WEB_PORT ?? process.env.PORT ?? 8989);
+const argv = process.argv.slice(2);
+const argvPort = argv.indexOf("--port");
+const PORT = Number(
+	argvPort !== -1 && argv[argvPort + 1]
+		? argv[argvPort + 1]
+		: (process.env.DS_WEB_PORT ?? process.env.PORT ?? 8989),
+);
 const CWD = resolve(process.env.DS_WEB_CWD ?? process.cwd());
 const DATA_DIR = resolve(process.env.DS_WEB_DATA_DIR ?? join(homedir(), ".ds-web"));
 const SESSION_DIR_ROOT = join(DATA_DIR, "sessions");
