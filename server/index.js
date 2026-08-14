@@ -6,7 +6,7 @@
  * spawned over stdio JSON-RPC (server/dsh-client.js). All JavaScript.
  *
  * Env:
- *   PORT            HTTP port (default 8787)
+ *   DS_WEB_PORT     HTTP port (default 8989)
  *   DS_WEB_CWD      workspace the agent operates in (default: process.cwd())
  *   DS_WEB_DATA_DIR per-client UI state + DSH session JSONL + dsh-key.json
  *                   (default: <home>/.ds-web)
@@ -25,7 +25,7 @@ import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import { AgentService, previewKind, workspacePath } from "./agent-service.js";
 
-const PORT = Number(process.env.PORT ?? 8787);
+const PORT = Number(process.env.DS_WEB_PORT ?? process.env.PORT ?? 8989);
 const CWD = resolve(process.env.DS_WEB_CWD ?? process.cwd());
 const DATA_DIR = resolve(process.env.DS_WEB_DATA_DIR ?? join(homedir(), ".ds-web"));
 const SESSION_DIR_ROOT = join(DATA_DIR, "sessions");
