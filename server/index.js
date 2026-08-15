@@ -40,22 +40,29 @@ const noOpen = argv.includes("--no-open") || Boolean(process.env.DS_WEB_NO_OPEN)
 
 /** Open the default browser to `url`, best-effort and non-blocking. */
 function openBrowser(url) {
-	try {
-		const { platform } = process;
-		if (platform === "win32") {
-			spawn("cmd", ["/c", "start", "", url], {
-				stdio: "ignore",
-				detached: true,
-				windowsHide: true,
-			}).unref();
-		} else if (platform === "darwin") {
-			spawn("open", [url], { stdio: "ignore", detached: true }).unref();
-		} else {
-			spawn("xdg-open", [url], { stdio: "ignore", detached: true }).unref();
-		}
-	} catch {
-		/* ignore */
+	const { platform } = process;
+	let child;
+	if (platform === "win32") {
+		child = spawn("cmd", ["/c", "start", "", url], {
+			stdio: "ignore",
+			detached: true,
+			windowsHide: true,
+		});
+	} else if (platform === "darwin") {
+		child = spawn("open", [url], { stdio: "ignore", detached: true });
+	} else {
+		child = spawn("xdg-open", [url], { stdio: "ignore", detached: true });
 	}
+	// ENOENT (headless server / missing xdg-open) fires an async 'error' event
+	// that try/catch cannot swallow — attach a handler so the server stays up.
+	child.on("error", (err) => {
+		if (err?.code === "ENOENT") {
+			console.warn(`[browser] no opener available (${err.path || "command not found"}); ` +
+				"use --no-open or DS_WEB_NO_OPEN=1 to silence");
+		} else {
+			console.warn("[browser] failed to open:", err.message);
+		}
+	}).unref();
 }
 const CWD = resolve(process.env.DS_WEB_CWD ?? process.cwd());
 const DATA_DIR = resolve(process.env.DS_WEB_DATA_DIR ?? join(homedir(), ".ds-web"));
@@ -274,6 +281,7 @@ wss.on("connection", (ws) => {
 					id: msg.id,
 					name: msg.name,
 					description: msg.description,
+					extraRows: msg.extraRows,
 				});
 				break;
 			case "delete_preset":
