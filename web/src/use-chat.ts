@@ -11,6 +11,7 @@ import type {
 	ProviderStatus,
 	ServerMessage,
 	SessionSummary,
+	SettingsSnapshot,
 	ToolStatus,
 	UiProviderConfig,
 	UiState,
@@ -106,6 +107,10 @@ export interface ChatState {
 	commandsPath: string;
 	/** Open terminal tabs (metadata only; streams go through the bridge). */
 	terminals: TerminalMeta[];
+	/** Settings snapshot (plugins + agent presets); null until list_settings. */
+	settings: SettingsSnapshot | null;
+	/** Composition viewer content for one preset (Settings → 查看). */
+	presetView: { id: string; content: string } | null;
 }
 
 type Action =
@@ -162,7 +167,9 @@ type Action =
 	| { type: "terminal_add"; meta: TerminalMeta }
 	| { type: "terminal_remove"; id: string }
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }
-	| { type: "terminal_restart"; terminalId: string };
+	| { type: "terminal_restart"; terminalId: string }
+	| { type: "settings"; settings: SettingsSnapshot }
+	| { type: "preset_view"; id: string; content: string };
 
 const MAX_LIVE_OUTPUT = 200_000;
 const MAX_TERM_BUFFER = 200_000;
@@ -372,6 +379,13 @@ function reducer(state: ChatState, action: Action): ChatState {
 						: t,
 				),
 			};
+		case "settings":
+			return { ...state, settings: action.settings };
+		case "preset_view":
+			return {
+				...state,
+				presetView: { id: action.id, content: action.content },
+			};
 		default:
 			return state;
 	}
@@ -424,6 +438,8 @@ export function useChat() {
 		commands: [],
 		commandsPath: "",
 		terminals: [],
+		settings: null,
+		presetView: null,
 	});
 	const wsRef = useRef<WebSocket | null>(null);
 	/** Terminal output bridge (writers keyed by terminalId). */
@@ -510,6 +526,9 @@ export function useChat() {
 					);
 					ws.send(
 						JSON.stringify({ type: "check_update" } satisfies ClientMessage),
+					);
+					ws.send(
+						JSON.stringify({ type: "list_settings" } satisfies ClientMessage),
 					);
 					break;
 				case "snapshot":
@@ -617,6 +636,24 @@ export function useChat() {
 						commands: msg.commands,
 						path: msg.path,
 					});
+					break;
+				case "settings":
+					// The server emits the flat settings object; strip `type` and store
+					// the rest as the SettingsSnapshot.
+					dispatch({
+						type: "settings",
+						settings: {
+							platform: msg.platform,
+							activePresetId: msg.activePresetId,
+							defaultPresetId: msg.defaultPresetId,
+							presets: msg.presets,
+							plugins: msg.plugins,
+							configDefaults: msg.configDefaults,
+						},
+					});
+					break;
+				case "preset_view":
+					dispatch({ type: "preset_view", id: msg.id, content: msg.content });
 					break;
 				default:
 					break;

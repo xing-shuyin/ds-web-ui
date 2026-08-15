@@ -45,6 +45,11 @@ ds-web-ui/
 │   │                           #   · setCwd 切换工作区（重启 runtime + 会话根）
 │   ├── dsh-client.js           # DshRuntime：spawn launcher + stdio JSON-RPC 客户端（initialize/prompt/事件通知）
 │   ├── serialize.js            # DSH 消息 → UiMessage 序列化（截断、稳定 id）
+│   ├── settings.js             # 设置域：插件清单 PLUGIN_CATALOG + Agent 预设 SettingsStore
+│   │                           #   · 持久化 <dataDir>/settings.json（预设花名册/默认/插件启停与配置）
+│   │                           #   · generateCordis()：cordis.template.yml 标记替换 → 生效配置
+│   │                           #   · writeEffectiveCordis() → <dataDir>/runtime/cordis-<clientId>.yml
+│   ├── cordis.template.yml     # 运行时组合模板（{{MARKER}} 占位，settings.js 生成时替换）
 │   └── terminals.js            # TerminalManager（PTY 生命周期）+ .pi/commands.json 读写
 ├── web/                        # 前端（从 pi-web-ui 0.16.2 照搬源码 + 构建）
 │   ├── src/                    # React 源码（品牌定制在源码层：TopBar/i18n/MessageList/FooterBar）
@@ -72,6 +77,9 @@ server/index.js  ── Express + ws ── 静态前端 + /api/health
    │
 server/agent-service.js  ── 每客户端一个会话；DSH 事件 → UI 快照（60ms 节流）
    │
+server/settings.js  ── 插件/预设设置（settings.json）→ generateCordis() →
+   │                  <dataDir>/runtime/cordis-<clientId>.yml（每次 initRuntime 重新生成）
+   │
 server/dsh-client.js  ── stdio JSON-RPC 2.0（newline-delimited）
    ▼
 vendor/runtime/dsh-jsonrpc-agent-launcher.js（Node）→ cordis.yml 插件组合
@@ -80,14 +88,22 @@ vendor/runtime/dsh-jsonrpc-agent-launcher.js（Node）→ cordis.yml 插件组�
 DeepSeek V4 模型（deepseek-v4-flash / deepseek-v4-pro）
 ```
 
+**设置生效链路**：设置页（插件启停 / AgentLoop·Bash·WebSearch 配置卡 / 预设花名册）→
+`settings` 消息（SettingsSnapshot）→ server/settings.js 改写当前预设并重写 cordis →
+`initRuntime()` 重启 runtime（若对话进行中则挂起，回合结束后 flushPendingRuntimeRestart）。
+预设 = 独立插件启停集合 + 配置（standard/minimal 内置，其余为复制生成的用户预设）。
+
 ### WebSocket 协议（pi-web-ui 协议，前端为事实来源）
 
 客户端 → 服务端：`hello`、`prompt`、`abort`、`new_chat`、`switch_conversation`、
 `edit_message`、`list_files`（path 可空=根）、`read_file`、`complete_path`、`set_cwd`、
-`list_commands`、`save_commands`、`list_models`、`set_model`、终端消息（`terminal_*`）等。
+`list_commands`、`save_commands`、`list_models`、`set_model`、终端消息（`terminal_*`）、
+设置消息（`list_settings`/`set_preset`/`set_default_preset`/`create_preset`/`update_preset`/
+`delete_preset`/`save_active_preset`/`view_preset`）等。
 
 服务端 → 客户端：`ready`、`snapshot`（含 state）、`notice`、`tool_status`、`file_content`、
 `files`、`path_completions`、`commands`、`slash_commands`、`conversations`、`models`、
+`settings`（插件/预设快照）、`preset_view`（预设组合阅读视图）、
 `terminal_add/remove/exit/restart` 等。
 
 **协议字段对齐要点（踩过坑）**：
@@ -156,6 +172,9 @@ DeepSeek V4 模型（deepseek-v4-flash / deepseek-v4-pro）
 - **改后端**：`server/*.js` 直接生效（`npm run dev` = `node --watch`）。
 - **换模型/价格**：`server/agent-service.js` 顶部 `DSH_MODELS`、`DSH_CONTEXT_WINDOW`、`DSH_PRICE_*`。
 - **升级 runtime**：`vendor/runtime/cordis.yml`（插件组合）+ dependencies 里的 `@deepseek-ai/dsh-*` 版本。
+- **改插件/预设**：`server/settings.js`（PLUGIN_CATALOG / SYSTEM_PRESETS / generateCordis）+
+  `server/cordis.template.yml`（标记槽）。用户设置持久化在 `~/.ds-web/settings.json`；
+  生效配置写在 `~/.ds-web/runtime/cordis-<clientId>.yml`。
 - **看日志**：runtime 子进程 stderr 会并入服务日志（dsh-client 的 stderrTail）。
 
 ## 7. 开发 / 构建 / 发布

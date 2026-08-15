@@ -8,34 +8,30 @@ import {
 	FiMessageSquare,
 	FiMoreHorizontal,
 	FiPlus,
+	FiSettings,
 	FiTerminal,
 	FiVolume2,
 } from "react-icons/fi";
 import type { ChatState } from "../use-chat";
 import { Dropdown, DropdownItem } from "./Dropdown";
 import { ModelThinking } from "./ModelThinking";
+import { AgentPresetSeat } from "./AgentPresetSeat";
 import { SoundSettingsPanel } from "./SoundSettings";
 import type { SoundKind, SoundSettings } from "../sounds";
 import { useI18n, type Locale } from "../i18n";
+import type { ClientMessage } from "../types";
 
 interface TopBarProps {
 	chat: ChatState;
-	send: (
-		msg:
-			| { type: "list_models" }
-			| { type: "set_model"; modelId: string }
-			| { type: "set_thinking"; level: string }
-			| { type: "new_chat" }
-			| { type: "list_models_config" }
-			| { type: "check_update" }
-			| { type: "update_app" },
-	) => boolean;
+	send: (msg: ClientMessage) => boolean;
 	view: "chat" | "terminal";
 	onViewChange: (view: "chat" | "terminal") => void;
 	/** Open a side panel as a mobile drawer ("left" = history, "right" = files). */
 	onOpenPanel: (side: "left" | "right") => void;
 	/** Open the custom model config panel. */
 	onManageModels: () => void;
+	/** Open the settings modal (plugins + agent presets). */
+	onOpenSettings: () => void;
 	/** Sound notification settings + change handler (owned by App). */
 	sound: SoundSettings;
 	onSoundChange: (settings: SoundSettings) => void;
@@ -49,6 +45,7 @@ export function TopBar({
 	onViewChange,
 	onOpenPanel,
 	onManageModels,
+	onOpenSettings,
 	sound,
 	onSoundChange,
 	onSoundPreview,
@@ -58,6 +55,7 @@ export function TopBar({
 	const [soundOpen, setSoundOpen] = useState(false);
 	const [langOpen, setLangOpen] = useState(false);
 	const [updateOpen, setUpdateOpen] = useState(false);
+	const [updateArmed, setUpdateArmed] = useState(false);
 	const [moreOpen, setMoreOpen] = useState(false);
 
 	const LANGUAGES: { value: Locale; label: string }[] = [
@@ -191,6 +189,18 @@ export function TopBar({
 						send={send}
 						onManageModels={onManageModels}
 					/>
+
+					<AgentPresetSeat chat={chat} send={send} />
+
+					<button
+						type="button"
+						className="chip"
+						title={t("settingsOpen")}
+						onClick={onOpenSettings}
+					>
+						<FiSettings />
+						<span className="chip-sub">{t("settings")}</span>
+					</button>
 
 					<Dropdown
 						trigger={
@@ -326,6 +336,16 @@ export function TopBar({
 						))}
 						<div className="dd-header">{t("update")}</div>
 						{renderUpdateBody()}
+						<button
+							type="button"
+							className="dd-refresh dd-more-link"
+							onClick={() => {
+								setMoreOpen(false);
+								onOpenSettings();
+							}}
+						>
+							<FiSettings /> {t("settings")}
+						</button>
 						<a
 							className="dd-refresh dd-more-link"
 							href="https://github.com/xing-shuyin/ds-web-ui"

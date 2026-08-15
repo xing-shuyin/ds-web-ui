@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { isRasterImage } from "../image-paste";
 
 import { ModelThinking } from "./ModelThinking";
+import { AgentPresetSeat } from "./AgentPresetSeat";
 
 interface ChatInputProps {
 	chat: ChatState;
@@ -341,6 +342,7 @@ export function ChatInput({
 							onManageModels={onManageModels}
 							compact
 						/>
+						<AgentPresetSeat chat={chat} send={send} compact />
 					</div>
 					<div className="input-tools-right">
 						<button

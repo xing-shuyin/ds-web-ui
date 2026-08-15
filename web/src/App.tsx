@@ -8,6 +8,7 @@ import { FooterBar } from "./components/FooterBar";
 import { Dialog } from "./components/Dialog";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { ModelConfigModal } from "./components/ModelConfigModal";
+import { SettingsModal } from "./components/SettingsModal";
 import { FilePreview, type PreviewFile } from "./components/FilePreview";
 import { useChat } from "./use-chat";
 import type { ClientMessage } from "./types";
@@ -48,8 +49,9 @@ export function App() {
 	// Mobile: which side panel is open as a drawer (null = both closed).
 	const [drawer, setDrawer] = useState<"left" | "right" | null>(null);
 	// Custom model config panel (model dropdown → 管理模型).
-	// Custom model config panel (model dropdown → 管理模型).
 	const [manageModelsOpen, setManageModelsOpen] = useState(false);
+	// Settings (plugins + agent presets).
+	const [settingsOpen, setSettingsOpen] = useState(false);
 
 	// -- sound notifications --------------------------------------------------
 	const [sound, setSound] = useState<SoundSettings>(loadSoundSettings);
@@ -242,6 +244,7 @@ export function App() {
 				}}
 				onOpenPanel={setDrawer}
 				onManageModels={() => setManageModelsOpen(true)}
+				onOpenSettings={() => setSettingsOpen(true)}
 				sound={sound}
 				onSoundChange={setSound}
 				onSoundPreview={(kind: SoundKind) => playSound(kind, sound)}
@@ -336,6 +339,13 @@ export function App() {
 					providers={chat.modelsConfig}
 					providerStatus={chat.providers}
 					onClose={() => setManageModelsOpen(false)}
+				/>
+			)}
+			{settingsOpen && (
+				<SettingsModal
+					chat={chat}
+					send={send}
+					onClose={() => setSettingsOpen(false)}
 				/>
 			)}
 		</div>

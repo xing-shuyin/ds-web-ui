@@ -26,6 +26,7 @@ import express from "express";
 import { spawn } from "node:child_process";
 import { WebSocket, WebSocketServer } from "ws";
 import { AgentService, previewKind, workspacePath } from "./agent-service.js";
+import { SettingsStore } from "./settings.js";
 
 const argv = process.argv.slice(2);
 const argvPort = argv.indexOf("--port");
@@ -123,7 +124,11 @@ const heartbeatTimer = setInterval(() => {
 	}
 }, 10_000);
 
-const service = new AgentService(CWD, join(DATA_DIR, "client-state.json"));
+const service = new AgentService(
+	CWD,
+	join(DATA_DIR, "client-state.json"),
+	new SettingsStore(DATA_DIR),
+);
 
 wss.on("connection", (ws) => {
 	let clientId = null;
@@ -251,6 +256,34 @@ wss.on("connection", (ws) => {
 				break;
 			case "save_commands":
 				void cs.saveCommands(msg.commands);
+				break;
+			case "list_settings":
+				void cs.listSettings();
+				break;
+			case "set_preset":
+				void cs.setPreset(msg.id);
+				break;
+			case "set_default_preset":
+				void cs.setDefaultPreset(msg.id);
+				break;
+			case "create_preset":
+				void cs.createPreset({ fromId: msg.fromId, id: msg.id, name: msg.name });
+				break;
+			case "update_preset":
+				void cs.updatePreset({
+					id: msg.id,
+					name: msg.name,
+					description: msg.description,
+				});
+				break;
+			case "delete_preset":
+				void cs.deletePreset(msg.id);
+				break;
+			case "save_active_preset":
+				void cs.saveActivePreset({ plugins: msg.plugins, config: msg.config });
+				break;
+			case "view_preset":
+				void cs.viewPreset(msg.id);
 				break;
 			default:
 				break;

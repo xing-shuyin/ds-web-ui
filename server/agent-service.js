@@ -41,6 +41,12 @@ import {
 	saveCommandsFile,
 	TerminalManager,
 } from "./terminals.js";
+import {
+	CONFIG_DEFAULTS,
+	PLUGIN_CATALOG,
+	SettingsStore,
+	generateCordis,
+} from "./settings.js";
 
 const SNAPSHOT_INTERVAL_MS = 60;
 const WIDGET_REFRESH_MS = 2000;
@@ -666,6 +672,11 @@ class Conversation {
 
 	onStatus(status) {
 		this.isStreaming = status === "running";
+		// A settings change that was deferred because this turn was running now
+		// gets applied: the run is over, so restarting can no longer kill it.
+		if (!this.isStreaming && this.client.pendingRuntimeRestart) {
+			void this.client.flushPendingRuntimeRestart();
+		}
 		this.client.scheduleSnapshot();
 	}
 
@@ -680,7 +691,7 @@ class Conversation {
 // ---------------------------------------------------------------------------
 
 export class ClientSession {
-	constructor(clientId, cwd, dataDir, stateStore, emit) {
+	constructor(clientId, cwd, dataDir, stateStore, emit, settingsStore) {
 		this.clientId = clientId;
 		this.cwd = cwd;
 		this.dataDir = dataDir;
@@ -709,14 +720,22 @@ export class ClientSession {
 		this.watchPath = null;
 		this.watchTimer = null;
 
+		// Agent presets: the active preset drives the generated cordis.yml the
+		// runtime is spawned with (see initRuntime). One runtime per client, so
+		// a preset switch restarts it and takes effect on the next request.
+		this.settingsStore = settingsStore;
+		this.activePresetId = settingsStore.getDefaultPresetId();
+		this.pendingRuntimeRestart = false;
+		this.pendingRestartNotice = undefined;
+
 		// DSH runtime expects the session ROOT here; it appends its own
 		// projectKey(cwd) directory (--<cwd>--). Root doubles as the
 		// findSessionFiles base so both layouts are discoverable.
 		this.sessionRoot = join(this.dataDir, "sessions");
 	}
 
-	static async create(clientId, cwd, dataDir, stateStore, emit) {
-		const cs = new ClientSession(clientId, cwd, dataDir, stateStore, emit);
+	static async create(clientId, cwd, dataDir, stateStore, emit, settingsStore) {
+		const cs = new ClientSession(clientId, cwd, dataDir, stateStore, emit, settingsStore);
 		cs.stateStore.recordProject(cwd);
 		await cs.initRuntime();
 		await cs.resumeRecent();
@@ -727,11 +746,20 @@ export class ClientSession {
 
 	async initRuntime() {
 		await this.disposeRuntime();
+		let cordisPath;
+		try {
+			cordisPath = this.settingsStore.writeEffectiveCordis(this.clientId, this.activePresetId);
+		} catch (err) {
+			console.error("[dsh] cordis generation failed:", err);
+			this.emit({ type: "notice", level: "error", text: `设置应用失败：${err.message}` });
+			return;
+		}
 		this.runtime = new DshRuntime({
 			cwd: this.cwd,
 			provider: this.provider,
 			model: this.model,
 			sessionRoot: this.sessionRoot,
+			cordis: cordisPath,
 			env: this.dshEnv(),
 		});
 		this.runtime.onNotification((method, params) => {
@@ -964,6 +992,10 @@ export class ClientSession {
 			queue: { steering: conv.queueSteering, followUp: conv.queueFollowUp },
 			errorMessage: conv.errorMessage,
 			tools: ["bash", "read", "write", "edit"],
+			agentPreset: (() => {
+				const p = this.settingsStore.getPreset(this.activePresetId);
+				return { id: this.activePresetId, name: p?.name ?? this.activePresetId };
+			})(),
 			version: ++this.version,
 			piConfigured: this.isConfigured(),
 			stats: {
@@ -1067,6 +1099,7 @@ export class ClientSession {
 
 	async newChat() {
 		const conv = this.makeConversation(`web-${randomUUID()}`);
+		conv.presetId = this.activePresetId;
 		conv.lastActiveAt = Date.now();
 		this.emitConversations();
 		this.flushSnapshot();
@@ -1141,6 +1174,9 @@ export class ClientSession {
 		await this.resumeRecent();
 		this.emitConversations();
 		this.flushSnapshot();
+		// Push the new workspace's session list so the sidebar updates without
+		// a manual page refresh.
+		await this.refreshSessions();
 		this.emit({ type: "notice", level: "info", text: `工作目录已切换：${this.cwd}` });
 	}
 
@@ -1436,6 +1472,198 @@ export class ClientSession {
 		this.emit({ type: "commands", commands, path });
 	}
 
+	// -- agent presets & plugins (settings) -----------------------------------
+
+	/** Full settings snapshot for the frontend (plugins tab + presets roster). */
+	async listSettings() {
+		this.emit(this.settingsSnapshot());
+	}
+
+	settingsSnapshot() {
+		const defaultId = this.settingsStore.getDefaultPresetId();
+		const presets = this.settingsStore.listPresets();
+		const active = this.settingsStore.getPreset(this.activePresetId);
+		const activePlugins = active?.plugins ?? {};
+		return {
+			type: "settings",
+			platform: process.platform,
+			activePresetId: this.activePresetId,
+			defaultPresetId: defaultId,
+			presets: presets.map((p) => ({
+				id: p.id,
+				name: p.name,
+				description: p.description ?? "",
+				system: p.system === true,
+				order: p.order ?? 0,
+				isDefault: p.id === defaultId,
+				isActive: p.id === this.activePresetId,
+				plugins: p.plugins ?? {},
+				config: p.config ?? {},
+			})),
+			plugins: PLUGIN_CATALOG.map((p) => ({
+				id: p.id,
+				module: p.module,
+				required: p.required === true,
+				group: p.group ?? "core",
+				configurable: p.configurable,
+				enabled: p.required === true ? true : activePlugins[p.id] !== false,
+			})),
+			configDefaults: CONFIG_DEFAULTS,
+		};
+	}
+
+	/** True while any conversation is mid-run — settings that restart the
+	 *  runtime must not kill a live turn silently. */
+	isStreamingAny() {
+		for (const conv of this.convs.values()) {
+			if (conv.isStreaming) return true;
+		}
+		return false;
+	}
+
+	/** Restart the runtime unless a conversation is streaming. Returns true when applied. */
+	async applyRuntimeChange(noticeText) {
+		if (this.isStreamingAny()) {
+			// Defer: the current turn finishes first, then the runtime restarts
+			// with the new composition (flushPendingRuntimeRestart, fired from
+			// Conversation.onStatus once the session turns idle).
+			this.pendingRuntimeRestart = true;
+			this.pendingRestartNotice = noticeText;
+			this.emit({
+				type: "notice",
+				level: "info",
+				text: "更改已保存，runtime 将在当前回合结束后自动重启生效。",
+			});
+			this.emitSettings();
+			return false;
+		}
+		await this.initRuntime();
+		if (noticeText) {
+			this.emit({ type: "notice", level: "info", text: noticeText });
+		}
+		this.emitSettings();
+		this.flushSnapshot();
+		return true;
+	}
+
+	/** Apply a deferred runtime restart now that no conversation is running. */
+	async flushPendingRuntimeRestart() {
+		if (this.disposed || !this.pendingRuntimeRestart) return;
+		this.pendingRuntimeRestart = false;
+		const notice = this.pendingRestartNotice ?? "设置已生效（runtime 已重启）。";
+		this.pendingRestartNotice = undefined;
+		await this.initRuntime();
+		this.emit({ type: "notice", level: "info", text: notice });
+		this.emitSettings();
+		this.flushSnapshot();
+	}
+
+	emitSettings() {
+		this.emit(this.settingsSnapshot());
+	}
+
+	/** Switch the ACTIVE preset (per conversation — restarts the runtime). */
+	async setPreset(id) {
+		const preset = this.settingsStore.getPreset(id);
+		if (!preset) {
+			this.emit({ type: "notice", level: "error", text: "预设不存在。" });
+			return;
+		}
+		if (id === this.activePresetId) {
+			this.emitSettings();
+			return;
+		}
+		this.activePresetId = id;
+		const applied = await this.applyRuntimeChange(
+			`已切换预设为「${preset.name}」，runtime 已重启（下次请求生效）。`,
+		);
+		if (!applied) {
+			// The choice is recorded; applyRuntimeChange armed a deferred restart
+			// that fires once the running turn ends (flushPendingRuntimeRestart).
+			this.emitSettings();
+			this.flushSnapshot();
+		}
+	}
+
+	async setDefaultPreset(id) {
+		try {
+			this.settingsStore.setDefaultPreset(id);
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: err.message });
+			return;
+		}
+		this.emitSettings();
+	}
+
+	async createPreset({ fromId, id, name }) {
+		try {
+			this.settingsStore.createPreset({ fromId, id, name });
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: err.message });
+			return;
+		}
+		this.emit({ type: "notice", level: "info", text: `预设「${name || id}」已创建。` });
+		this.emitSettings();
+	}
+
+	async updatePreset({ id, name, description }) {
+		try {
+			this.settingsStore.updatePreset(id, { name, description });
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: err.message });
+			return;
+		}
+		this.emit({ type: "notice", level: "info", text: "预设已更新。" });
+		this.emitSettings();
+	}
+
+	async deletePreset(id) {
+		try {
+			const removed = this.settingsStore.deletePreset(id);
+			if (!removed) {
+				this.emit({ type: "notice", level: "error", text: "预设不存在。" });
+				return;
+			}
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: err.message });
+			return;
+		}
+		this.emit({ type: "notice", level: "info", text: "预设已删除。" });
+		if (this.activePresetId === id) {
+			this.activePresetId = this.settingsStore.getDefaultPresetId();
+			await this.initRuntime();
+			this.flushSnapshot();
+		}
+		this.emitSettings();
+	}
+
+	/** Save plugin toggles / config cards into the ACTIVE preset + restart. */
+	async saveActivePreset({ plugins, config }) {
+		try {
+			if (plugins && typeof plugins === "object") {
+				this.settingsStore.saveActivePresetPlugins(this.activePresetId, plugins);
+			}
+			if (config && typeof config === "object") {
+				this.settingsStore.saveActivePresetConfig(this.activePresetId, config);
+			}
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: err.message });
+			return;
+		}
+		await this.applyRuntimeChange("插件设置已保存，runtime 已重启（下次请求生效）。");
+	}
+
+	/** Read-only composition view for one preset (system presets viewer). */
+	async viewPreset(id) {
+		try {
+			const preset = this.settingsStore.getPreset(id);
+			if (!preset) throw new Error("预设不存在。");
+			this.emit({ type: "preset_view", id, content: generateCordis(preset) });
+		} catch (err) {
+			this.emit({ type: "notice", level: "error", text: err.message });
+		}
+	}
+
 	// -- DSH setup -------------------------------------------------------------
 
 	async installPiAgent() {
@@ -1540,6 +1768,8 @@ export class ClientSession {
 
 	async dispose() {
 		this.disposed = true;
+		this.pendingRuntimeRestart = false;
+		this.pendingRestartNotice = undefined;
 		if (this.snapshotTimer) clearTimeout(this.snapshotTimer);
 		if (this.sessionsTimer) clearTimeout(this.sessionsTimer);
 		this.unwatchDir();
@@ -1558,9 +1788,10 @@ function modelName(id) {
 // ---------------------------------------------------------------------------
 
 export class AgentService {
-	constructor(cwd, stateFile) {
+	constructor(cwd, stateFile, settingsStore) {
 		this.cwd = cwd;
 		this.stateStore = new ClientStateStore(stateFile);
+		this.settingsStore = settingsStore ?? new SettingsStore(dirname(stateFile));
 		this.clients = new Map();
 		this.pending = new Map(); // clientId -> {send, createPromise}
 	}
@@ -1592,6 +1823,7 @@ export class AgentService {
 				() => {
 					/* per-client emit routed through sinks */
 				},
+				this.settingsStore,
 			);
 			this.clients.set(clientId, cs);
 			this.pending.delete(clientId);

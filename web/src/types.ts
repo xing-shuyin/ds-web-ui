@@ -91,6 +91,8 @@ export interface UiState {
 	queue: { steering: number; followUp: number };
 	errorMessage?: string;
 	tools: string[];
+	/** The agent preset the runtime is currently composed with. */
+	agentPreset?: { id: string; name: string };
 	version: number;
 	/** Whether the pi agent config looks ready (auth.json has credentials). */
 	piConfigured?: boolean;
@@ -207,7 +209,31 @@ export type ClientMessage =
 	| { type: "list_models_config" }
 	| { type: "save_model_config"; providerId: string; config: UiProviderConfig }
 	| { type: "delete_model_config"; providerId: string }
-	| { type: "list_providers" };
+	| { type: "list_providers" }
+	// -- settings (plugins + agent presets) ------------------------------------
+	/** Fetch the full settings snapshot (plugin inventory + preset roster). */
+	| { type: "list_settings" }
+	/** Switch the ACTIVE preset for the current conversation (restarts runtime). */
+	| { type: "set_preset"; id: string }
+	/** Persist the default preset for future sessions. */
+	| { type: "set_default_preset"; id: string }
+	/** Create a custom preset as a copy of an existing one. */
+	| { type: "create_preset"; fromId: string; id: string; name: string }
+	/** Edit a custom preset's metadata (name / description). */
+	| { type: "update_preset"; id: string; name?: string; description?: string }
+	| { type: "delete_preset"; id: string }
+	/** Save plugin toggles / config cards into the ACTIVE preset (restarts runtime). */
+	| {
+			type: "save_active_preset";
+			plugins?: Record<string, boolean>;
+			config?: {
+				agentLoop?: { maxParallelToolCalls?: number };
+				bash?: { timeoutMs?: number; maxOutputBytes?: number };
+				webSearch?: { baseURL?: string; maxUses?: number; apiKey?: string };
+			};
+	  }
+	/** Read-only generated composition of one preset (system viewer). */
+	| { type: "view_preset"; id: string };
 
 export interface SessionSummary {
 	path: string;
@@ -318,6 +344,61 @@ export interface ProviderStatus {
 	source?: string;
 }
 
+/* ------------------------------------------------------------------------
+ * settings (plugins + agent presets)
+ * ---------------------------------------------------------------------- */
+
+export interface AgentPresetConfig {
+	agentLoop: { maxParallelToolCalls?: number };
+	bash: { timeoutMs?: number; maxOutputBytes?: number };
+	webSearch: { baseURL?: string; maxUses?: number; apiKey?: string };
+}
+
+/** One agent preset on the roster (system presets are shipped + fixed id). */
+export interface AgentPreset {
+	id: string;
+	name: string;
+	description: string;
+	system: boolean;
+	order: number;
+	isDefault: boolean;
+	/** True when this preset is the one the current runtime runs. */
+	isActive: boolean;
+	/** Plugin id → enabled (per-preset). Core plugins are always true. */
+	plugins: Record<string, boolean>;
+	/** Config-card values; empty/undefined = inherit the runtime default. */
+	config: AgentPresetConfig;
+}
+
+/** One entry of the bundled plugin inventory. */
+export interface PluginInfo {
+	id: string;
+	/** npm module specifier (display name for the row). */
+	module: string;
+	/** Core plugins are structural — their toggle is locked. */
+	required: boolean;
+	group: "core" | "shell" | "files" | "web";
+	/** Present on plugins with an editable settings card. */
+	configurable?: "agentLoop" | "bash" | "webSearch";
+	/** Enabled in the ACTIVE preset. */
+	enabled: boolean;
+}
+
+/** Server → client settings snapshot (the whole Settings modal state). */
+export interface SettingsSnapshot {
+	platform: string;
+	activePresetId: string;
+	defaultPresetId: string;
+	presets: AgentPreset[];
+	plugins: PluginInfo[];
+	/** Runtime defaults the config cards fall back to when a preset has none. */
+	configDefaults: {
+		agentLoop: { maxParallelToolCalls: number };
+		bash: { timeoutMs: number; maxOutputBytes: number };
+		webSearch: { baseURL: string; maxUses: number };
+	};
+}
+
 /** A tool FINISHED executing (mirrors the tool_status ServerMessage). */
 export interface ToolStatus {
 	toolCallId: string;
@@ -420,4 +501,17 @@ export type ServerMessage =
 			error?: string;
 	  }
 	/** Result of an update_app run (npm i -g). */
-	| { type: "update_result"; ok: boolean; detail: string };
+	| { type: "update_result"; ok: boolean; detail: string }
+	// -- settings (plugins + agent presets) ------------------------------------
+	/** Full settings snapshot: plugin inventory + preset roster. */
+	| {
+			type: "settings";
+			platform: string;
+			activePresetId: string;
+			defaultPresetId: string;
+			presets: AgentPreset[];
+			plugins: PluginInfo[];
+			configDefaults: SettingsSnapshot["configDefaults"];
+	  }
+	/** Read-only generated composition of one preset (viewer). */
+	| { type: "preset_view"; id: string; content: string };
