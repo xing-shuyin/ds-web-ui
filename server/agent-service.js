@@ -1499,6 +1499,7 @@ export class ClientSession {
 				isActive: p.id === this.activePresetId,
 				plugins: p.plugins ?? {},
 				config: p.config ?? {},
+				extraRows: p.extraRows ?? "",
 			})),
 			plugins: PLUGIN_CATALOG.map((p) => ({
 				id: p.id,
@@ -1606,9 +1607,9 @@ export class ClientSession {
 		this.emitSettings();
 	}
 
-	async updatePreset({ id, name, description }) {
+	async updatePreset({ id, name, description, extraRows }) {
 		try {
-			this.settingsStore.updatePreset(id, { name, description });
+			this.settingsStore.updatePreset(id, { name, description, extraRows });
 		} catch (err) {
 			this.emit({ type: "notice", level: "error", text: err.message });
 			return;

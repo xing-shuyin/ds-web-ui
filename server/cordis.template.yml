@@ -72,3 +72,7 @@
   name: '@deepseek-ai/dsh-fs-local'
   config:
     cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+{{CODE_MODE_ROWS}}
+{{CREATOR_ROWS}}
+{{EXTRA_ROWS}}

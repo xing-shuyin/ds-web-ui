@@ -368,6 +368,8 @@ export interface AgentPreset {
 	plugins: Record<string, boolean>;
 	/** Config-card values; empty/undefined = inherit the runtime default. */
 	config: AgentPresetConfig;
+	/** Extra raw cordis rows appended to the generated composition (advanced). */
+	extraRows?: string;
 }
 
 /** One entry of the bundled plugin inventory. */
@@ -377,7 +379,7 @@ export interface PluginInfo {
 	module: string;
 	/** Core plugins are structural — their toggle is locked. */
 	required: boolean;
-	group: "core" | "shell" | "files" | "web";
+	group: "core" | "shell" | "files" | "web" | "code" | "creator";
 	/** Present on plugins with an editable settings card. */
 	configurable?: "agentLoop" | "bash" | "webSearch";
 	/** Enabled in the ACTIVE preset. */

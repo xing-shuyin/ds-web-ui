@@ -4722,6 +4722,24 @@ body {
 	color: var(--red);
 }
 
+/* preset extra rows (advanced) */
+.settings-extra-rows {
+	margin-top: 6px;
+}
+.settings-extra-rows summary {
+	color: var(--text-dim);
+	font-size: 12.5px;
+	font-weight: 600;
+	cursor: pointer;
+	user-select: none;
+}
+.settings-extra-rows textarea {
+	font-family: var(--mono, ui-monospace, monospace);
+	font-size: 12px;
+	line-height: 1.5;
+	margin-top: 4px;
+}
+
 /* --- preset roster --- */
 
 .settings-preset-cards {

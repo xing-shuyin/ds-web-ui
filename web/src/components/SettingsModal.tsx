@@ -53,6 +53,8 @@ const PLUGIN_GROUPS: { key: PluginInfo["group"]; labelKey: string }[] = [
 	{ key: "shell", labelKey: "pluginGroupShell" },
 	{ key: "files", labelKey: "pluginGroupFiles" },
 	{ key: "web", labelKey: "pluginGroupWeb" },
+	{ key: "code", labelKey: "pluginGroupCode" },
+	{ key: "creator", labelKey: "pluginGroupCreator" },
 ];
 
 /** Empty draft for one card (all fields as text). */
@@ -239,7 +241,9 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 
 	// -- roster dialogs ------------------------------------------------------
 	const [copy, setCopy] = useState<{ fromId: string; fromName: string; id: string; name: string; saving: boolean } | null>(null);
-	const [edit, setEdit] = useState<{ id: string; name: string; description: string; saving: boolean } | null>(null);
+	const [edit, setEdit] = useState<
+		{ id: string; name: string; description: string; extraRows: string; saving: boolean } | null
+	>(null);
 	const [deleteId, setDeleteId] = useState<string | null>(null);
 	const [viewId, setViewId] = useState<string | null>(null);
 
@@ -262,11 +266,18 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 			setCopy(null);
 		}
 	}, [settings, copy]);
-	const openEdit = (p: AgentPreset) => setEdit({ id: p.id, name: p.name, description: p.description, saving: false });
+	const openEdit = (p: AgentPreset) =>
+		setEdit({ id: p.id, name: p.name, description: p.description, extraRows: p.extraRows ?? "", saving: false });
 	const submitEdit = () => {
 		if (!edit || edit.saving) return;
 		setEdit({ ...edit, saving: true });
-		send({ type: "update_preset", id: edit.id, name: edit.name, description: edit.description });
+		send({
+			type: "update_preset",
+			id: edit.id,
+			name: edit.name,
+			description: edit.description,
+			extraRows: edit.extraRows,
+		});
 		window.setTimeout(() => {
 			setEdit((e) => (e && e.saving ? { ...e, saving: false } : e));
 		}, 4000);
@@ -469,6 +480,17 @@ export function SettingsModal({ chat, send, onClose }: SettingsModalProps) {
 								onChange={(e) => setEdit({ ...edit, description: e.target.value })}
 							/>
 						</label>
+						<details className="settings-field settings-extra-rows">
+							<summary>{t("presetExtraRows")}</summary>
+							<p className="settings-field-hint">{t("presetExtraRowsHint")}</p>
+							<textarea
+								rows={8}
+								value={edit.extraRows}
+								spellCheck={false}
+								placeholder="- id: my-tool\n  name: '@scope/my-plugin'"
+								onChange={(e) => setEdit({ ...edit, extraRows: e.target.value })}
+							/>
+						</details>
 						<div className="modal-actions">
 							<button type="button" className="btn" onClick={() => setEdit(null)}>
 								{t("cancel")}

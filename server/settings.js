@@ -49,6 +49,15 @@ export const PLUGIN_CATALOG = [
 	{ id: "tool-fs-search", module: "@deepseek-ai/dsh-tool-fs-search", group: "files" },
 	{ id: "tool-str-replace-editor", module: "@deepseek-ai/dsh-tool-str-replace-editor", group: "files" },
 	{ id: "web-search", module: "@deepseek-ai/dsh-web-search-deepseek", group: "web", configurable: "webSearch" },
+	// PTC 模式（官方 code 预设）：host 平面 TypeScript 运行时 + 呈现行。
+	// tool-presentation 依赖 code-runtime 提供的 `codeRuntime` 服务，二者需同时启用。
+	{ id: "code-runtime", module: "@deepseek-ai/dsh-code-runtime-worker-thread", group: "code", default: false },
+	{ id: "tool-presentation", module: "@deepseek-ai/dsh-agent-tool-presentation", group: "code", default: false },
+	// 创造模式（官方 cordis 预设）：自省运行时 + 组合创作指导 skills。
+	// tool-cordis 启用时自动附带 cordis-host-runner 宿主行。
+	{ id: "tool-cordis", module: "@deepseek-ai/dsh-tool-cordis", group: "creator", default: false },
+	{ id: "skill-filesystem", module: "@deepseek-ai/dsh-skill-filesystem", group: "creator", default: false },
+	{ id: "tool-skill", module: "@deepseek-ai/dsh-tool-skill", group: "creator", default: false },
 ];
 
 /** Runtime defaults the config cards inherit when a preset has no override. */
@@ -74,15 +83,43 @@ export const SYSTEM_PRESETS = [
 		config: { agentLoop: {}, bash: {}, webSearch: {} },
 	},
 	{
-		id: "minimal",
-		name: "极简模式",
-		description: "Shell（PowerShell）+ 文件读写 / 搜索 / 精确编辑工具，适合直接改文件的工作流。",
+		id: "code",
+		name: "PTC 模式",
+		description: "标准模式全部能力 + Code Mode SDK：模型用一个 TypeScript 程序组合多步操作，减少往返。",
 		system: true,
 		order: 2,
 		plugins: {
 			bash: true, pwsh: true, "tool-pwsh": true,
+			"tool-fs": false, "tool-fs-search": false, "tool-str-replace-editor": false,
+			"web-search": false,
+			"code-runtime": true, "tool-presentation": true,
+		},
+		config: { agentLoop: {}, bash: {}, webSearch: {} },
+	},
+	{
+		id: "minimal",
+		name: "极简模式",
+		description: "Shell（PowerShell）+ 文件读写 / 搜索 / 精确编辑工具，适合直接改文件的工作流。",
+		system: true,
+		order: 3,
+		plugins: {
+			bash: true, pwsh: true, "tool-pwsh": true,
 			"tool-fs": true, "tool-fs-search": true, "tool-str-replace-editor": true,
 			"web-search": false,
+		},
+		config: { agentLoop: {}, bash: {}, webSearch: {} },
+	},
+	{
+		id: "cordis",
+		name: "创造模式",
+		description: "标准模式全部能力 + 自省运行时 / 挂载卸载插件 / 组合创作指导 skills，用于创作自己的 agent 预设。",
+		system: true,
+		order: 4,
+		plugins: {
+			bash: true, pwsh: true, "tool-pwsh": true,
+			"tool-fs": false, "tool-fs-search": false, "tool-str-replace-editor": false,
+			"web-search": false,
+			"tool-cordis": true, "skill-filesystem": true, "tool-skill": true,
 		},
 		config: { agentLoop: {}, bash: {}, webSearch: {} },
 	},
@@ -95,7 +132,15 @@ function normalizePlugins(plugins) {
 	const out = {};
 	for (const id of PLUGIN_IDS) {
 		const req = PLUGIN_CATALOG.find((p) => p.id === id);
-		out[id] = req?.required ? true : plugins?.[id] !== false;
+		if (req?.required) {
+			out[id] = true;
+		} else if (plugins?.[id] !== undefined) {
+			out[id] = plugins[id] !== false;
+		} else {
+			// Missing key: opt-in plugins (default: false) stay off; the rest
+			// inherit the historical default of on.
+			out[id] = req?.default !== false;
+		}
 	}
 	return out;
 }
@@ -223,6 +268,7 @@ export class SettingsStore {
 			order: maxOrder + 1,
 			plugins: source.plugins,
 			config: source.config,
+			extraRows: source.extraRows ?? "",
 		});
 		this._save();
 		return this.getPreset(id);
@@ -234,6 +280,7 @@ export class SettingsStore {
 		if (p.system) throw new Error("内置预设不可重命名或改描述。");
 		if (typeof patch.name === "string" && patch.name.trim()) p.name = patch.name.trim();
 		if (typeof patch.description === "string") p.description = patch.description.trim();
+		if (typeof patch.extraRows === "string") p.extraRows = patch.extraRows;
 		this._save();
 		return this.getPreset(id);
 	}
@@ -378,6 +425,50 @@ export function generateCordis(preset) {
 		);
 	}
 
+	// PTC mode (official `code` preset): host TypeScript runtime + presentation.
+	// tool-presentation needs the codeRuntime service, so it only mounts when
+	// code-runtime is enabled too (matches the official composition).
+	const codeRows = [];
+	if (plugins["code-runtime"]) {
+		codeRows.push(`# PTC 模式：host 平面 TypeScript 运行时（Code Mode SDK 执行引擎）。`);
+		codeRows.push(`- id: code-runtime\n  name: '@deepseek-ai/dsh-code-runtime-worker-thread'`);
+	}
+	if (plugins["tool-presentation"]) {
+		if (!plugins["code-runtime"]) {
+			throw new Error("tool-presentation 依赖 code-runtime，请同时启用 Code 运行时。");
+		}
+		codeRows.push(`# PTC 模式：将工具呈现为 run_code + 生成 SDK（Code Mode）。`);
+		codeRows.push(`- id: tool-presentation\n  name: '@deepseek-ai/dsh-agent-tool-presentation'\n  config:\n    mode: code`);
+	}
+
+	// Creator mode (official `cordis` preset): self-referential toolset + skills.
+	// tool-cordis reads the live runtime through the host runner, so enabling
+	// it auto-mounts the runner row (same pair as the official composition).
+	const creatorRows = [];
+	if (plugins["tool-cordis"]) {
+		creatorRows.push(`# 创造模式：cordis 宿主运行器 + 自引用工具集（自省 / 挂载 / 卸载插件）。`);
+		creatorRows.push(`- id: cordis-host-runner\n  name: '@deepseek-ai/dsh-cordis-host-runner'`);
+		creatorRows.push(`- id: tool-cordis\n  name: '@deepseek-ai/dsh-tool-cordis'`);
+	}
+	if (plugins["skill-filesystem"] || plugins["tool-skill"]) {
+		const skillsDir = join(
+			dirname(fileURLToPath(import.meta.url)),
+			"..",
+			"vendor",
+			"runtime",
+			"skills",
+		);
+		creatorRows.push(`# 创造模式：随包携带的组合创作 skills（editing-cordis-compositions 等）。`);
+		if (plugins["skill-filesystem"]) {
+			creatorRows.push(
+				`- id: skill-filesystem\n  name: '@deepseek-ai/dsh-skill-filesystem'\n  config:\n    customSkillDirs:\n      - ${JSON.stringify(skillsDir)}`,
+			);
+		}
+		if (plugins["tool-skill"]) {
+			creatorRows.push(`- id: tool-skill\n  name: '@deepseek-ai/dsh-tool-skill'`);
+		}
+	}
+
 	const out = tpl
 		.replace("{{AGENT_LOOP_CONFIG}}", agentLoop)
 		.replace("{{BASH_DISABLED}}", shellDisabledExpr("bash", plugins.bash))
@@ -385,7 +476,10 @@ export function generateCordis(preset) {
 		.replace("{{TOOL_PWSH_DISABLED}}", shellDisabledExpr("tool-pwsh", plugins["tool-pwsh"]))
 		.replace("{{BASH_CONFIG}}", bashConfig)
 		.replace("{{FILE_TOOL_ROWS}}", fileRows.length > 0 ? fileRows.join("\n\n") : "")
-		.replace("{{WEB_SEARCH_ROWS}}", webRows.length > 0 ? webRows.join("\n\n") : "");
+		.replace("{{WEB_SEARCH_ROWS}}", webRows.length > 0 ? webRows.join("\n\n") : "")
+		.replace("{{CODE_MODE_ROWS}}", codeRows.length > 0 ? codeRows.join("\n\n") : "")
+		.replace("{{CREATOR_ROWS}}", creatorRows.length > 0 ? creatorRows.join("\n\n") : "")
+		.replace("{{EXTRA_ROWS}}", typeof preset.extraRows === "string" && preset.extraRows.trim() ? preset.extraRows.trim() + "\n" : "");
 
 	if (out.includes("{{")) {
 		throw new Error("cordis 生成失败：模板占位符未全部替换。");
