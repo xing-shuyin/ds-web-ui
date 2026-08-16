@@ -93,6 +93,18 @@ export interface UiState {
 	tools: string[];
 	/** The agent preset the runtime is currently composed with. */
 	agentPreset?: { id: string; name: string };
+	/**
+	 * DSH native goal (dsh-goal) — null when no goal is set. Mirrors the
+	 * goal view from goal/change session events.
+	 */
+	goal?: {
+		objective: string;
+		/** active | paused | blocked | complete */
+		phase: string;
+		maxGoalRounds: number;
+		roundsStarted: number;
+		updatedAt: number;
+	} | null;
 	version: number;
 	/** Whether the pi agent config looks ready (auth.json has credentials). */
 	piConfigured?: boolean;
@@ -177,6 +189,9 @@ export type ClientMessage =
 	// -- command list (.pi/commands.json) ------------------------------------
 	| { type: "list_commands" }
 	| { type: "save_commands"; commands: CommandDef[] }
+	// -- slash commands ------------------------------------------------------
+	/** Fetch the slash-command catalog (builtin + user commands). */
+	| { type: "get_commands" }
 	| { type: "abort" }
 	| { type: "new_chat" }
 	/** Edit a past user question and re-ask it (forks a new session at that point). */
@@ -234,6 +249,18 @@ export type ClientMessage =
 	  }
 	/** Read-only generated composition of one preset (system viewer). */
 	| { type: "view_preset"; id: string };
+
+/** A slash command available in the chat input (mirror of the server catalog). */
+export interface SlashCommandInfo {
+	name: string;
+	/** Localized description (zh-CN; see descriptionEn). */
+	description?: string;
+	descriptionEn?: string;
+	/** Argument placeholder, e.g. "[名称]". */
+	argumentHint?: string;
+	argumentHintEn?: string;
+	source: "builtin" | "extension" | "prompt" | "skill";
+}
 
 export interface SessionSummary {
 	path: string;
@@ -439,6 +466,9 @@ export type ServerMessage =
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }
 	// -- command list (.pi/commands.json) ------------------------------------
 	| { type: "commands"; commands: CommandDef[]; path: string }
+	// -- slash commands ------------------------------------------------------
+	/** The slash-command catalog for the chat input picker (/help modal). */
+	| { type: "slash_commands"; commands: SlashCommandInfo[] }
 	| { type: "notice"; level: "info" | "warning" | "error"; text: string }
 	/** Sent every ~10s so clients can detect half-open connections. */
 	| { type: "heartbeat" }

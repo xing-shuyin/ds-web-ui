@@ -85,10 +85,53 @@ export async function saveCommandsFile(workspaceRoot, commands) {
 // ---------------------------------------------------------------------------
 
 const isWindows = process.platform === "win32";
-const SHELL = isWindows
-	? process.env.SHELL || process.env.COMSPEC || "powershell.exe"
-	: process.env.SHELL || "bash";
-const SHELL_ARGS = isWindows ? [] : ["-i"];
+
+/** `-i` makes bash interactive; cmd.exe / powershell.exe are interactive on their own. */
+function bashArgs(shell) {
+	return /[\\/]bash(\.exe)?$/i.test(shell) ? ["-i"] : [];
+}
+
+/**
+ * Interactive shell for PTYs (ported from pi-web-ui terminals.ts resolveShell).
+ * - Windows: prefer bash — the same shell language most users expect in a
+ *   terminal, with a busybox-w32 fallback so a bare box still gets bash:
+ *   1. DS_WEB_SHELL / PI_WEB_SHELL (explicit override)
+ *   2. $SHELL when it exists on disk (user launched from a Git Bash session)
+ *   3. Git Bash install paths (ProgramFiles / ProgramFiles(x86))
+ *   4. busybox-w32 fallback in <home>/.ds-web/bin/bash.exe (ensure-bash.js
+ *      downloads it automatically when 2–3 are absent)
+ *   5. powershell.exe (matches the DSH agent's shell on Windows)
+ *   6. $COMSPEC (cmd.exe — always set, last resort)
+ * - POSIX: the user's login shell, falling back to bash.
+ * Resolved per terminal spawn (not at module load) so a busybox download that
+ * finishes after startup is picked up by the next terminal.
+ */
+function resolveShell() {
+	if (isWindows) {
+		const explicit =
+			process.env.DS_WEB_SHELL ?? process.env.PI_WEB_SHELL;
+		if (explicit) return { shell: explicit, args: bashArgs(explicit) };
+		const she = process.env.SHELL;
+		if (she && existsSync(she)) return { shell: she, args: bashArgs(she) };
+		const pf = process.env.ProgramFiles;
+		const pf86 = process.env["ProgramFiles(x86)"];
+		for (const cand of [
+			pf ? join(pf, "Git", "bin", "bash.exe") : "",
+			pf86 ? join(pf86, "Git", "bin", "bash.exe") : "",
+		]) {
+			if (cand && existsSync(cand)) return { shell: cand, args: ["-i"] };
+		}
+		const busybox = join(homedir(), ".ds-web", "bin", "bash.exe");
+		if (existsSync(busybox)) return { shell: busybox, args: ["-i"] };
+		// PowerShell matches the DSH agent's shell tool (dsh-tool-pwsh) on
+		// Windows; cmd.exe remains the last resort.
+		return {
+			shell: process.env.COMSPEC || "powershell.exe",
+			args: [],
+		};
+	}
+	return { shell: process.env.SHELL || "bash", args: ["-i"] };
+}
 
 function shellEnv() {
 	const env = { ...process.env, TERM: "xterm-256color" };
@@ -191,8 +234,9 @@ export class TerminalManager {
 		}
 		repairSpawnHelperPermissions();
 		let pty;
+		const { shell, args } = resolveShell();
 		try {
-			pty = spawn(SHELL, SHELL_ARGS, {
+			pty = spawn(shell, args, {
 				name: "xterm-256color",
 				cols: Math.max(2, Math.floor(cols) || 80),
 				rows: Math.max(2, Math.floor(rows) || 24),

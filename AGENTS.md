@@ -43,14 +43,21 @@ ds-web-ui/
 │   │                           #   · token 统计（runtime usage 事件累计）+ 花费估算（官方定价）
 │   │                           #   · isConfigured：~/.ds-web/dsh-key.json → ~/.pi/agent/auth.json（os.homedir()！）
 │   │                           #   · setCwd 切换工作区（重启 runtime + 会话根）
+│   │                           #   · 原生斜杠命令 NATIVE_COMMANDS（/new /model /cwd /resume
+│   │                           #     /reload /ds-web-ui:quit）+ prompt() 拦截，不进 LLM
+│   │                           #   · abort() = 硬中断：kill runtime 子进程树 + initRuntime() 重启
+│   │                           #   · goal：转发 goal/change 会话事件 → snapshot.goal（DSH 原生 dsh-goal）
 │   ├── dsh-client.js           # DshRuntime：spawn launcher + stdio JSON-RPC 客户端（initialize/prompt/事件通知）
+│   │                           #   · kill()：硬杀进程树（POSIX group SIGKILL / win32 taskkill /T /F）
 │   ├── serialize.js            # DSH 消息 → UiMessage 序列化（截断、稳定 id）
 │   ├── settings.js             # 设置域：插件清单 PLUGIN_CATALOG + Agent 预设 SettingsStore
 │   │                           #   · 持久化 <dataDir>/settings.json（预设花名册/默认/插件启停与配置）
 │   │                           #   · generateCordis()：cordis.template.yml 标记替换 → 生效配置
 │   │                           #   · writeEffectiveCordis() → <dataDir>/runtime/cordis-<clientId>.yml
 │   ├── cordis.template.yml     # 运行时组合模板（{{MARKER}} 占位，settings.js 生成时替换）
+│   ├── ensure-bash.js          # Windows busybox-w32 兜底（无 Git Bash 时下载 bash.exe 到 ~/.ds-web/bin）
 │   └── terminals.js            # TerminalManager（PTY 生命周期）+ .pi/commands.json 读写
+│                               #   · resolveShell()：DS_WEB_SHELL → $SHELL → Git Bash → busybox → powershell → cmd
 ├── web/                        # 前端（从 pi-web-ui 0.16.2 照搬源码 + 构建）
 │   ├── src/                    # React 源码（品牌定制在源码层：TopBar/i18n/MessageList/FooterBar）
 │   ├── dist/                   # vite 构建产物（发布内容，勿手改！改源码后 npm run build:web 重建）
@@ -92,6 +99,15 @@ DeepSeek V4 模型（deepseek-v4-flash / deepseek-v4-pro）
 `settings` 消息（SettingsSnapshot）→ server/settings.js 改写当前预设并重写 cordis →
 `initRuntime()` 重启 runtime（若对话进行中则挂起，回合结束后 flushPendingRuntimeRestart）。
 预设 = 独立插件启停集合 + 配置（standard/minimal 内置，其余为复制生成的用户预设）。
+
+**Goal（DSH 原生）**：cordis 组合含 `dsh-goal` + `dsh-goal-round-driver` + `dsh-tool-goal`（goal 组插件，默认开）。
+目标由**智能体**用 get_goal/create_goal/update_goal 工具创建/更新（JSON-RPC 无 goal 方法，UI 不能直设）；
+`goal/change` 会话事件经 session.event → snapshot.goal（objective/phase/maxGoalRounds/roundsStarted），
+前端 GoalBar 展示；「设置目标」= 发 prompt 让智能体记入（轮数上限写进消息）；回合结束后 round-driver 自动续轮。
+
+**中断（硬中断）**：DSH 协议无 cancel → `abort()` 直接 `runtime.kill()`（POSIX 进程组 SIGKILL，
+Windows taskkill /T /F，含 bash/pwsh 子进程）+ `initRuntime()` 重启；会话日志无法 resume（id collision），
+下一条消息自动 fork 新会话。顶栏「中断」按钮仅在 isStreaming 时显示。
 
 ### WebSocket 协议（pi-web-ui 协议，前端为事实来源）
 
@@ -163,6 +179,9 @@ DeepSeek V4 模型（deepseek-v4-flash / deepseek-v4-pro）
 6. `spawn` .js launcher 时用 `process.execPath` 执行（Windows 不能直接 spawn .js）。
 7. 测试端口时要确认监听 pid 与 `$!` 一致（Git Bash 下可能不同），残留进程会导致 EADDRINUSE 假象。
 8. bash heredoc 写含 `\\` 的 JS 测试脚本会被吃掉反斜杠（`\W` 变成无效转义被忽略）——用 write 工具写测试文件。
+9. 终端 shell 解析（terminals.js resolveShell）：`DS_WEB_SHELL`（兼容 `PI_WEB_SHELL`）→ `$SHELL` →
+   Git Bash → busybox（`~/.ds-web/bin/bash.exe`，ensure-bash.js 自动下载）→ powershell → cmd；
+   每次创建终端时解析而非模块加载时。
 
 ## 6. 常见任务
 

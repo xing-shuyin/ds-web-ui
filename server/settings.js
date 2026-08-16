@@ -58,6 +58,13 @@ export const PLUGIN_CATALOG = [
 	{ id: "tool-cordis", module: "@deepseek-ai/dsh-tool-cordis", group: "creator", default: false },
 	{ id: "skill-filesystem", module: "@deepseek-ai/dsh-skill-filesystem", group: "creator", default: false },
 	{ id: "tool-skill", module: "@deepseek-ai/dsh-tool-skill", group: "creator", default: false },
+	// Goal 模式（DSH 原生）：同会话目标 + 自动延续轮。goal 提供目标状态服务；
+	// goal-round-driver 在回合结束时驱动续轮；tool-goal 给模型 get/create/update 工具。
+	// default: true —— 老 settings.json 里的预设没有这三个键，re-merge 时缺失键
+	// 按 default 补（与 bash/pwsh 同惯例），保证升级后新功能默认可用。
+	{ id: "goal", module: "@deepseek-ai/dsh-goal", group: "goal" },
+	{ id: "goal-round-driver", module: "@deepseek-ai/dsh-goal-round-driver", group: "goal" },
+	{ id: "tool-goal", module: "@deepseek-ai/dsh-tool-goal", group: "goal" },
 ];
 
 /** Runtime defaults the config cards inherit when a preset has no override. */
@@ -79,6 +86,7 @@ export const SYSTEM_PRESETS = [
 			bash: true, pwsh: true, "tool-pwsh": true,
 			"tool-fs": false, "tool-fs-search": false, "tool-str-replace-editor": false,
 			"web-search": false,
+			"goal": true, "goal-round-driver": true, "tool-goal": true,
 		},
 		config: { agentLoop: {}, bash: {}, webSearch: {} },
 	},
@@ -93,6 +101,7 @@ export const SYSTEM_PRESETS = [
 			"tool-fs": false, "tool-fs-search": false, "tool-str-replace-editor": false,
 			"web-search": false,
 			"code-runtime": true, "tool-presentation": true,
+			"goal": true, "goal-round-driver": true, "tool-goal": true,
 		},
 		config: { agentLoop: {}, bash: {}, webSearch: {} },
 	},
@@ -106,6 +115,7 @@ export const SYSTEM_PRESETS = [
 			bash: true, pwsh: true, "tool-pwsh": true,
 			"tool-fs": true, "tool-fs-search": true, "tool-str-replace-editor": true,
 			"web-search": false,
+			"goal": true, "goal-round-driver": true, "tool-goal": true,
 		},
 		config: { agentLoop: {}, bash: {}, webSearch: {} },
 	},
@@ -469,6 +479,26 @@ export function generateCordis(preset) {
 		}
 	}
 
+	// Goal 模式：同会话目标状态 + 自动延续轮 + 模型目标工具。
+	// tool-goal 依赖 goal 提供的 goals 服务；round-driver 亦依赖 goals。
+	const goalRows = [];
+	if (plugins["goal"]) {
+		goalRows.push(`# Goal 模式：同会话目标状态（DSH 原生 goal 工作流）。`);
+		goalRows.push(`- id: goal\n  name: '@deepseek-ai/dsh-goal'`);
+	}
+	if (plugins["goal-round-driver"]) {
+		if (!plugins["goal"]) {
+			throw new Error("goal-round-driver 依赖 goal，请同时启用 Goal 服务。");
+		}
+		goalRows.push(`- id: goal-round-driver\n  name: '@deepseek-ai/dsh-goal-round-driver'`);
+	}
+	if (plugins["tool-goal"]) {
+		if (!plugins["goal"]) {
+			throw new Error("tool-goal 依赖 goal，请同时启用 Goal 服务。");
+		}
+		goalRows.push(`- id: tool-goal\n  name: '@deepseek-ai/dsh-tool-goal'`);
+	}
+
 	const out = tpl
 		.replace("{{AGENT_LOOP_CONFIG}}", agentLoop)
 		.replace("{{BASH_DISABLED}}", shellDisabledExpr("bash", plugins.bash))
@@ -479,6 +509,7 @@ export function generateCordis(preset) {
 		.replace("{{WEB_SEARCH_ROWS}}", webRows.length > 0 ? webRows.join("\n\n") : "")
 		.replace("{{CODE_MODE_ROWS}}", codeRows.length > 0 ? codeRows.join("\n\n") : "")
 		.replace("{{CREATOR_ROWS}}", creatorRows.length > 0 ? creatorRows.join("\n\n") : "")
+		.replace("{{GOAL_ROWS}}", goalRows.length > 0 ? goalRows.join("\n\n") : "")
 		.replace("{{EXTRA_ROWS}}", typeof preset.extraRows === "string" && preset.extraRows.trim() ? preset.extraRows.trim() + "\n" : "");
 
 	if (out.includes("{{")) {

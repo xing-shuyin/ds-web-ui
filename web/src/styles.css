@@ -1529,6 +1529,64 @@ body {
 	min-width: 0;
 }
 
+/* Global interrupt button — prominent red stop, shown in the top bar while a
+   run is streaming so a hung command can always be stopped (even when the
+   input bar is scrolled off screen). */
+.topbar .btn.interrupt {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 12px;
+	border: 1px solid var(--red);
+	border-radius: 6px;
+	background: var(--red);
+	color: #fff;
+	font-size: 12.5px;
+	font-weight: 600;
+	cursor: pointer;
+	white-space: nowrap;
+	/* hover 用 background 变化而不是 filter——filter 会创建 stacking
+	   context，把 tooltip（按钮子元素）的 z-index 关在按钮内部，导致
+	   悬浮提示被消息区/bash 卡片盖住。 */
+	transition: background 0.15s;
+}
+.topbar .btn.interrupt:hover:not(:disabled) {
+	background: #d64545;
+}
+
+/* Multi-line hover hint for the global interrupt button — same visual
+   language and stacking as the dd-menu popups. */
+.topbar .btn.interrupt[data-tip] {
+	position: relative;
+}
+.topbar .btn.interrupt[data-tip]::after {
+	content: attr(data-tip);
+	position: absolute;
+	top: calc(100% + 8px);
+	right: 0;
+	background: var(--bg-elev2);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 8px 12px;
+	font-size: 11px;
+	line-height: 1.5;
+	white-space: pre-line;
+	min-width: 240px;
+	max-width: 420px;
+	text-align: left;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.09s ease;
+	/* 与 dd-menu 同级（60）+，且不再被按钮的 stacking context 限制 */
+	z-index: 10000;
+	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.topbar .btn.interrupt[data-tip]:hover::after {
+	opacity: 1;
+}
+
 /* Desktop-only toolbar block (model/thinking/sound/lang/update/github).
    On phones it is replaced by the single "⋯" button (.topbar-more). */
 .topbar-desktop {
@@ -3227,6 +3285,394 @@ body {
 	background: var(--accent);
 	border-color: var(--accent);
 	color: #fff;
+}
+
+/* ---------------------------------------------------- slash command picker */
+
+.slash-menu {
+	position: absolute;
+	bottom: calc(100% - 4px);
+	left: 50%;
+	transform: translateX(-50%);
+	/* Same footprint as the input box (inputbar horizontal padding 20px). */
+	width: min(860px, calc(100% - 40px));
+	max-height: min(320px, 50vh);
+	overflow-y: auto;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 14px;
+	box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.35), 0 2px 12px rgba(0, 0, 0, 0.25);
+	z-index: 60;
+	padding: 6px;
+}
+.slash-menu-hint {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 10px 8px;
+	font-size: 11.5px;
+	color: var(--text-faint);
+	border-bottom: 1px dashed var(--border);
+	margin-bottom: 6px;
+}
+.slash-menu-close {
+	cursor: pointer;
+	opacity: 0.7;
+}
+.slash-menu-close:hover {
+	opacity: 1;
+}
+.slash-item {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	width: 100%;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 9px;
+	background: transparent;
+	color: var(--text);
+	font-family: var(--sans);
+	font-size: 13.5px;
+	text-align: left;
+	cursor: pointer;
+}
+.slash-item.active {
+	background: var(--accent-soft);
+}
+.slash-name {
+	font-family: var(--mono);
+	font-size: 12.5px;
+	color: var(--accent);
+	white-space: nowrap;
+}
+.slash-desc {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-dim);
+	font-size: 12.5px;
+}
+.slash-hint {
+	color: var(--text-faint);
+	font-family: var(--mono);
+	font-size: 11.5px;
+	margin-left: 6px;
+}
+.slash-source {
+	flex-shrink: 0;
+	font-size: 10.5px;
+	padding: 1px 7px;
+	border-radius: 999px;
+	border: 1px solid var(--border);
+	color: var(--text-faint);
+	white-space: nowrap;
+}
+.slash-source.builtin {
+	color: var(--green);
+	border-color: color-mix(in srgb, var(--green) 45%, transparent);
+}
+.slash-source.extension {
+	color: var(--amber);
+	border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.slash-source.prompt {
+	color: var(--accent);
+	border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.slash-source.skill {
+	color: #5eb3ff;
+	border-color: color-mix(in srgb, #5eb3ff 45%, transparent);
+}
+
+/* /help modal */
+.slash-help {
+	/* Same width as the input box (860px), capped by the backdrop padding. */
+	max-width: 860px;
+	width: 100%;
+	max-height: min(560px, 80vh);
+	display: flex;
+	flex-direction: column;
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 16px;
+	box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+	overflow: hidden;
+}
+.slash-help-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 18px;
+	border-bottom: 1px solid var(--border);
+	font-size: 15px;
+	font-weight: 600;
+}
+.slash-help-body {
+	overflow-y: auto;
+	padding: 8px 12px 14px;
+}
+.slash-help-row {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	padding: 7px 8px;
+	border-radius: 8px;
+}
+.slash-help-row:hover {
+	background: var(--bg-elev);
+}
+.slash-help-cmd {
+	font-family: var(--mono);
+	font-size: 12.5px;
+	color: var(--accent);
+	white-space: nowrap;
+}
+.slash-help-desc {
+	flex: 1;
+	color: var(--text-dim);
+	font-size: 13px;
+}
+.slash-help-empty {
+	padding: 24px;
+	text-align: center;
+	color: var(--text-faint);
+}
+
+/* ---------------------------------------------------------------- goalbar */
+
+.goalbar {
+	max-width: 860px;
+	margin: 0 auto 8px;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	background: var(--bg-elev);
+	padding: 8px 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.goalbar-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.goalbar-icon {
+	color: var(--amber);
+	display: inline-flex;
+	align-items: center;
+	font-size: 15px;
+	flex-shrink: 0;
+}
+
+.goalbar-input {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: none;
+	outline: none;
+	color: var(--text);
+	font-size: 13px;
+	padding: 4px 2px;
+}
+
+.goalbar-input::placeholder {
+	color: var(--text-dim);
+}
+
+.goalbar-btn {
+	background: var(--accent);
+	color: #fff;
+	border: none;
+	border-radius: 8px;
+	padding: 5px 12px;
+	font-size: 12px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.goalbar-btn:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.goalbar-icon-btn {
+	background: transparent;
+	border: none;
+	color: var(--text-dim);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	padding: 4px;
+	border-radius: 6px;
+	font-size: 15px;
+	flex-shrink: 0;
+}
+
+.goalbar-icon-btn:hover {
+	color: var(--text);
+	background: var(--bg-elev2);
+}
+
+.goalbar-round {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-dim);
+	font-size: 12px;
+}
+
+.goalbar-round input {
+	width: 54px;
+	padding: 3px 6px;
+	font-size: 12px;
+	color: var(--text);
+	background: var(--bg-elev2);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	outline: none;
+	text-align: center;
+}
+
+.goalbar-round input:focus {
+	border-color: var(--accent);
+}
+
+.goalbar-round input::placeholder {
+	color: var(--text-faint);
+}
+
+.goalbar-note {
+	font-size: 11.5px;
+	color: var(--text-faint);
+	line-height: 1.5;
+}
+
+/* Active (goal set) state */
+.goalbar-active {
+	border-color: var(--amber);
+	background: color-mix(in srgb, var(--amber) 8%, var(--bg-elev));
+}
+
+.goalbar-active.complete {
+	border-color: var(--green);
+	background: color-mix(in srgb, var(--green) 8%, var(--bg-elev));
+}
+
+.goalbar-active.blocked {
+	border-color: var(--red);
+	background: color-mix(in srgb, var(--red) 8%, var(--bg-elev));
+}
+
+.goalbar-active-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 13px;
+}
+
+.goalbar-text {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	color: var(--text);
+	flex: 1;
+	min-width: 0;
+}
+
+.goalbar-chip {
+	flex-shrink: 0;
+	font-size: 11px;
+	padding: 2px 8px;
+	border-radius: 10px;
+	background: var(--bg-elev2);
+	color: var(--text-dim);
+	white-space: nowrap;
+}
+
+.goalbar-chip.active {
+	background: var(--amber);
+	color: #fff;
+}
+
+.goalbar-chip.paused {
+	background: var(--text-dim);
+	color: #fff;
+}
+
+.goalbar-chip.complete {
+	background: var(--green);
+	color: #fff;
+}
+
+.goalbar-chip.blocked {
+	background: var(--red);
+	color: #fff;
+}
+
+.goalbar-detail {
+	color: var(--text-dim);
+	font-size: 12px;
+	flex-shrink: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 30%;
+}
+
+.goalbar-x {
+	background: transparent;
+	border: none;
+	color: var(--text-dim);
+	cursor: pointer;
+	padding: 4px;
+	display: inline-flex;
+	border-radius: 6px;
+	flex-shrink: 0;
+}
+
+.goalbar-x:hover {
+	color: var(--red);
+	background: var(--bg-elev2);
+}
+
+.goalbar-collapsed {
+	/* No border/panel — a tiny chip that doesn't dominate the bottom strip. */
+	border: none;
+	background: transparent;
+	padding: 0;
+	align-items: flex-start;
+}
+
+.goalbar-hint {
+	background: transparent;
+	border: none;
+	color: var(--text-dim);
+	font-size: 12px;
+	padding: 4px 10px;
+	cursor: pointer;
+	border-radius: 999px;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	border: 1px dashed var(--border);
+	background: var(--bg-elev);
+	transition: border-color 0.15s, color 0.15s;
+}
+
+.goalbar-hint svg {
+	color: var(--amber);
+}
+
+.goalbar-hint:hover {
+	color: var(--text);
+	border-color: var(--amber);
+	border-style: solid;
 }
 
 /* ------------------------------------------------------------------ scroll */

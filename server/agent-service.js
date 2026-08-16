@@ -452,6 +452,8 @@ class Conversation {
 		// Streaming accumulator for the in-progress assistant turn.
 		this.stream = null; // { text, thinking, toolCalls[], timestamp, model, provider }
 		this.isStreaming = false;
+		// DSH native goal state (dsh-goal): null until a goal/change event.
+		this.goal = null;
 		// tool call meta (tool/result → toolName).
 		this.toolNames = new Map(); // callId -> name
 		this.toolStartTimes = new Map(); // callId -> ts
@@ -610,6 +612,25 @@ class Conversation {
 				}
 				break;
 			}
+			case "goal/change": {
+				// DSH native goal lifecycle (dsh-goal): create/edit/pause/resume/
+				// complete/blocked. The change payload carries the full goal view;
+				// a null/absent goal means the goal was cleared.
+				const change = ev.data;
+				const g = change?.goal;
+				if (g && typeof g === "object") {
+					this.goal = {
+						objective: g.objective ?? "",
+						phase: g.phase ?? "active",
+						maxGoalRounds: g.maxGoalRounds ?? 256,
+						roundsStarted: change.roundsStarted ?? 0,
+						updatedAt: change.updatedAt ?? Date.now(),
+					};
+				} else {
+					this.goal = null;
+				}
+				break;
+			}
 			case "turn/start": {
 				this._ensureStream(ev);
 				break;
@@ -732,6 +753,10 @@ export class ClientSession {
 		// projectKey(cwd) directory (--<cwd>--). Root doubles as the
 		// findSessionFiles base so both layouts are discoverable.
 		this.sessionRoot = join(this.dataDir, "sessions");
+
+		/** Optional callback set by the server: /ds-web-ui:quit falls back to
+		 *  process.exit(0) when unset (or when it returns false). */
+		this.onQuit = null;
 	}
 
 	static async create(clientId, cwd, dataDir, stateStore, emit, settingsStore) {
@@ -989,6 +1014,7 @@ export class ClientSession {
 			},
 			thinkingLevel: this.thinkingLevel,
 			availableThinkingLevels: ["off"],
+			goal: conv.goal,
 			queue: { steering: conv.queueSteering, followUp: conv.queueFollowUp },
 			errorMessage: conv.errorMessage,
 			tools: ["bash", "read", "write", "edit"],
@@ -1042,6 +1068,13 @@ export class ClientSession {
 			this.emit({ type: "notice", level: "warning", text: "DSH runtime 未就绪，无法发送消息。" });
 			return;
 		}
+		// Native slash commands (see NATIVE_COMMANDS) are executed here and
+		// never reach the model — the DSH runtime only expands plugin commands,
+		// so without this /new /model etc. would hit the LLM as plain text.
+		const slash = this.parseSlash(text);
+		if (slash && (await this.execNativeCommand(slash.name, slash.args))) {
+			return;
+		}
 		conv.promptedSinceActive = true;
 		const blocks = [{ type: "text", text }];
 		// Attachments: workspace paths are referenced in text; raw image/file
@@ -1089,12 +1122,35 @@ export class ClientSession {
 	}
 
 	async abort() {
-		// The DSH wire protocol has no prompt-cancel method yet.
+		const conv = this.activeConv;
+		if (!conv || !conv.isStreaming) {
+			this.emit({ type: "notice", level: "info", text: "当前没有正在运行的任务。" });
+			return;
+		}
+		// Hard interrupt — the DSH wire protocol has no prompt-cancel method, so
+		// we SIGKILL the runtime subprocess (and its bash/pwsh children) mid-turn
+		// and restart it. The partial session log can't be resumed (id collision),
+		// so the next prompt auto-forks into a fresh session.
+		conv.isStreaming = false;
+		conv.stream = null;
+		conv.errorMessage = "任务已被用户中断";
 		this.emit({
 			type: "notice",
 			level: "warning",
-			text: "DSH runtime 暂不支持中断当前回合（协议无 cancel 方法）。",
+			text: "已中断当前任务（DSH 无协议级 cancel，采用硬中断：runtime 已重启）。下一条消息将自动新建会话继续。",
 		});
+		if (this.runtime) {
+			try {
+				await this.runtime.kill();
+			} catch {
+				/* ignore */
+			}
+		}
+		this.runtime = null;
+		this.dshReady = false;
+		// Restart the runtime so the next request starts from a clean process.
+		await this.initRuntime();
+		this.flushSnapshot();
 	}
 
 	async newChat() {
@@ -1279,12 +1335,150 @@ export class ClientSession {
 	async pushSlashCommands() {
 		this.emit({
 			type: "slash_commands",
-			commands: [
-				{ name: "new", description: "开始新对话", source: "builtin" },
-				{ name: "resume", description: "恢复最近的会话", source: "builtin" },
-				{ name: "clear", description: "清空当前会话上下文", source: "builtin" },
-			],
+			commands: ClientSession.NATIVE_COMMANDS.map((c) => ({
+				name: c.name,
+				description: c.description,
+				descriptionEn: c.descriptionEn,
+				...(c.argumentHint ? { argumentHint: c.argumentHint } : {}),
+				...(c.argumentHintEn ? { argumentHintEn: c.argumentHintEn } : {}),
+				source: "builtin",
+			})),
 		});
+	}
+
+	/**
+	 * Slash commands understood by the Web UI itself (never sent to the DSH
+	 * runtime). /help and /copy are handled entirely client-side; the server
+	 * executes the rest in execNativeCommand().
+	 */
+	static NATIVE_COMMANDS = [
+		{ name: "new", description: "新建对话", descriptionEn: "New chat" },
+		{
+			name: "model",
+			description: "切换模型",
+			descriptionEn: "Switch model",
+			argumentHint: "[名称]",
+			argumentHintEn: "[name]",
+		},
+		{
+			name: "cwd",
+			description: "切换工作目录",
+			descriptionEn: "Switch workspace",
+			argumentHint: "<路径>",
+			argumentHintEn: "<path>",
+		},
+		{
+			name: "resume",
+			description: "恢复最近会话",
+			descriptionEn: "Resume recent session",
+		},
+		{
+			name: "reload",
+			description: "刷新命令目录",
+			descriptionEn: "Reload command catalog",
+		},
+		{ name: "help", description: "显示全部命令", descriptionEn: "Show all commands" },
+		{ name: "copy", description: "复制上一条助手回复", descriptionEn: "Copy last assistant reply" },
+		{
+			name: "ds-web-ui:quit",
+			description: "退出服务",
+			descriptionEn: "Quit server (supervisor will restart)",
+		},
+	];
+
+	/** Parse a prompt into "/command args" — returns null when it isn't one. */
+	parseSlash(text) {
+		const trimmed = (text ?? "").trim();
+		if (!trimmed.startsWith("/")) return null;
+		const m = trimmed.match(/^\/([^\s]+)\s*([\s\S]*)$/);
+		if (!m || !m[1]) return null;
+		return { name: m[1], args: m[2].trim() };
+	}
+
+	/** Run a native slash command (see NATIVE_COMMANDS). Returns false when the
+	 *  name is not a native command (the prompt falls through to the runtime). */
+	async execNativeCommand(name, args) {
+		switch (name) {
+			case "new":
+				await this.newChat();
+				return true;
+			case "model": {
+				if (!args) {
+					const current = DSH_MODELS.find((m) => m.id === this.model);
+					this.emit({
+						type: "notice",
+						level: "info",
+						text: current
+							? `当前模型：${current.name}（${current.id}）。用法：/model <名称>`
+						: `用法：/model <名称>`,
+					});
+					return true;
+				}
+				const query = args.toLowerCase();
+				const matches = DSH_MODELS.filter(
+					(m) =>
+						m.id.toLowerCase().includes(query) ||
+						m.name.toLowerCase().includes(query),
+				);
+				if (matches.length === 0) {
+					this.emit({
+						type: "notice",
+						level: "error",
+						text: `没有匹配到模型：${args}（可用模型见顶栏模型列表）`,
+					});
+					return true;
+				}
+				const pick = matches[0];
+				if (matches.length > 1) {
+					this.emit({
+						type: "notice",
+						level: "warning",
+						text: `找到 ${matches.length} 个匹配模型，已选用：${pick.name}`,
+					});
+				}
+				await this.setModel(pick.id);
+				return true;
+			}
+			case "cwd": {
+				if (!args) {
+					this.emit({
+						type: "notice",
+						level: "info",
+						text: `当前工作目录：${this.cwd}。用法：/cwd <路径>`,
+					});
+					return true;
+				}
+				await this.setCwd(args);
+				return true;
+			}
+			case "resume":
+				await this.resumeRecent();
+				return true;
+			case "reload":
+				await this.pushSlashCommands();
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: "命令目录已刷新。",
+				});
+				return true;
+			case "ds-web-ui:quit": {
+				this.emit({
+					type: "notice",
+					level: "info",
+					text: "正在退出 ds-web-ui… supervisor 将自动重启服务",
+				});
+				setTimeout(() => {
+					const didSchedule = this.onQuit?.() ?? false;
+					if (!didSchedule) {
+						setTimeout(() => process.exit(0), 100);
+					}
+				}, 300);
+				return true;
+			}
+			default:
+				return false;
+		}
 	}
 
 	// -- projects / files -----------------------------------------------------
@@ -1795,6 +1989,9 @@ export class AgentService {
 		this.settingsStore = settingsStore ?? new SettingsStore(dirname(stateFile));
 		this.clients = new Map();
 		this.pending = new Map(); // clientId -> {send, createPromise}
+
+		/** Optional: /ds-web-ui:quit calls this (set by the server entry). */
+		this.onQuit = null;
 	}
 
 	get(clientId) {
@@ -1826,6 +2023,7 @@ export class AgentService {
 				},
 				this.settingsStore,
 			);
+			cs.onQuit = this.onQuit;
 			this.clients.set(clientId, cs);
 			this.pending.delete(clientId);
 			return cs;

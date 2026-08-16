@@ -32,6 +32,19 @@ const zh = {
 	githubRepo: "GitHub 仓库（xing-shuyin/ds-web-ui）",
 	copy: "复制",
 
+	/* slash commands */
+	slashCommands: "命令",
+	slashMenuHint: "↑↓ 选择 · Enter/Tab 补全",
+	slashHelpTitle: "ds-web-ui 命令",
+	slashLoading: "命令列表加载中…（连接服务器后可用）",
+	slashBuiltin: "内置",
+	slashExtension: "扩展",
+	slashPrompt: "模板",
+	slashSkill: "技能",
+	slashCopied: "已复制上一条助手回复",
+	slashCopyFailed: "复制失败，请手动复制",
+	slashCopyEmpty: "还没有可复制的助手回复",
+
 	/* topbar */
 	viewSwitch: "视图切换",
 	chat: "对话",
@@ -95,6 +108,9 @@ const zh = {
 	placeholderConnecting: "正在连接服务器…",
 	stopAgent: "停止智能体",
 	stop: "停止",
+	interrupt: "中断",
+	interruptTip:
+		"停止整个智能体运行（模型生成 + 工具调用）\n同时清理 AI 在后台启动的服务，释放被占用的端口\n（DSH 无协议级 cancel，采用硬中断：重启 runtime）",
 	supplement: "补充",
 	supplementTip: "当前回复完成后立即发送",
 	sendTip: "发送（Enter）",
@@ -490,6 +506,40 @@ const en: Record<keyof typeof zh, string> = {
 	githubRepo: "GitHub repository (xing-shuyin/ds-web-ui)",
 	copy: "Copy",
 
+	/* slash commands */
+	slashCommands: "Commands",
+	slashMenuHint: "↑↓ select · Enter/Tab complete",
+	slashHelpTitle: "ds-web-ui commands",
+	slashLoading: "Loading commands… (available once connected)",
+	slashBuiltin: "Builtin",
+	slashExtension: "Extension",
+	slashPrompt: "Template",
+	slashSkill: "Skill",
+	slashCopied: "Copied the last assistant reply",
+	slashCopyFailed: "Copy failed — please copy manually",
+	slashCopyEmpty: "No assistant reply to copy yet",
+
+	/* goal bar */
+	goalBarTitle: "Goal",
+	goalBarPlaceholder: "Enter a long-running objective… the agent records it in-session",
+	goalBarSet: "Set goal",
+	goalBarSetPrompt: "🎯 Set the goal: {goal} ({rounds}). This is a long-running objective that should continue across autonomous rounds — record it with the goal tools and start working.",
+	goalBarSetRounds: "max {n} auto rounds",
+	goalBarSetUnlimited: "unlimited rounds",
+	goalBarEnd: "End goal",
+	goalBarEndPrompt: "🎯 The goal “{goal}” is achieved or no longer needed — update the goal state to complete.",
+	goalBarPhaseActive: "Active",
+	goalBarPhasePaused: "Paused",
+	goalBarPhaseBlocked: "Blocked",
+	goalBarPhaseComplete: "Complete",
+	goalBarRound: "Round {n}",
+	goalBarOfRounds: "of {n}",
+	goalBarUnlimited: "Unlimited",
+	goalBarMaxRounds: "Max auto rounds",
+	goalBarMaxRoundsTip: "0 = unlimited. The cap is sent to the agent along with the goal.",
+	goalBarCollapse: "Collapse",
+	goalBarNote: "Goals are recorded by the agent via the DSH goal tools (create/update_goal); after each turn the agent auto-continues until complete or the round cap is reached.",
+
 	/* topbar */
 	viewSwitch: "Switch view",
 	chat: "Chat",
@@ -554,6 +604,9 @@ const en: Record<keyof typeof zh, string> = {
 	placeholderConnecting: "Connecting to server…",
 	stopAgent: "Stop agent",
 	stop: "Stop",
+	interrupt: "Interrupt",
+	interruptTip:
+		"Stop the whole agent run (generation + tool calls)\nAlso kills background servers the AI started (frees ports)\n(DSH has no protocol cancel — hard interrupt: runtime restarts)",
 	supplement: "Follow-up",
 	supplementTip: "Send immediately after the current reply finishes",
 	sendTip: "Send (Enter)",

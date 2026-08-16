@@ -166,6 +166,9 @@ export class DshRuntime {
 		this.proc = spawn(runCmd, runArgs, {
 			env,
 			stdio: ["pipe", "pipe", "pipe"],
+			// POSIX: own process group so a hard interrupt can SIGKILL the whole
+			// tree (runtime + its bash/pwsh subprocesses) in one shot.
+			...(process.platform !== "win32" ? { detached: true } : {}),
 		});
 		this.closed = false;
 		this.buffer = "";
@@ -329,5 +332,67 @@ export class DshRuntime {
 			}
 		}
 		this.proc = null;
+	}
+
+	/**
+	 * Force-kill the runtime subprocess AND its whole process tree, without a
+	 * shutdown handshake. Used for the hard interrupt — the runtime is
+	 * mid-turn and would never answer a graceful `shutdown` request (it is
+	 * queued behind the running prompt). POSIX: the launcher runs detached in
+	 * its own process group, so SIGKILL(-pid) takes the runtime and its
+	 * bash/pwsh children together. Windows: taskkill /T /F walks the tree.
+	 */
+	async kill() {
+		const proc = this.proc;
+		if (!proc || proc.exitCode !== null) {
+			this.proc = null;
+			this.closed = true;
+			return;
+		}
+		this.closed = true;
+		const pid = proc.pid;
+		this.proc = null;
+		// Reject any in-flight request so awaiting callers don't hang forever.
+		for (const { reject } of this.pending.values()) {
+			try {
+				reject(new DshTransportError("runtime killed (interrupt)"));
+			} catch {
+				/* already settled */
+			}
+		}
+		this.pending.clear();
+		try {
+			if (process.platform === "win32") {
+				const killer = spawn(
+					"taskkill",
+					["/pid", String(pid), "/T", "/F"],
+					{ stdio: "ignore", windowsHide: true },
+				);
+				killer.on("error", () => {
+					/* taskkill missing — fall back to direct kill below */
+					try {
+						proc.kill("SIGKILL");
+					} catch {
+						/* already dead */
+					}
+				});
+			} else {
+				try {
+					process.kill(-pid, "SIGKILL");
+				} catch {
+					try {
+						proc.kill("SIGKILL");
+					} catch {
+						/* already dead */
+					}
+				}
+			}
+		} catch {
+			try {
+				proc.kill("SIGKILL");
+			} catch {
+				/* already dead */
+			}
+		}
 	}
 }

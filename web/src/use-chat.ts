@@ -12,6 +12,7 @@ import type {
 	ServerMessage,
 	SessionSummary,
 	SettingsSnapshot,
+	SlashCommandInfo,
 	ToolStatus,
 	UiProviderConfig,
 	UiState,
@@ -111,6 +112,8 @@ export interface ChatState {
 	settings: SettingsSnapshot | null;
 	/** Composition viewer content for one preset (Settings → 查看). */
 	presetView: { id: string; content: string } | null;
+	/** Slash-command catalog for the chat input (builtin + user commands). */
+	slashCommands: SlashCommandInfo[];
 }
 
 type Action =
@@ -169,7 +172,8 @@ type Action =
 	| { type: "terminal_exit"; terminalId: string; exitCode: number | null }
 	| { type: "terminal_restart"; terminalId: string }
 	| { type: "settings"; settings: SettingsSnapshot }
-	| { type: "preset_view"; id: string; content: string };
+	| { type: "preset_view"; id: string; content: string }
+	| { type: "slash_commands"; commands: SlashCommandInfo[] };
 
 const MAX_LIVE_OUTPUT = 200_000;
 const MAX_TERM_BUFFER = 200_000;
@@ -386,6 +390,8 @@ function reducer(state: ChatState, action: Action): ChatState {
 				...state,
 				presetView: { id: action.id, content: action.content },
 			};
+		case "slash_commands":
+			return { ...state, slashCommands: action.commands };
 		default:
 			return state;
 	}
@@ -440,6 +446,7 @@ export function useChat() {
 		terminals: [],
 		settings: null,
 		presetView: null,
+		slashCommands: [],
 	});
 	const wsRef = useRef<WebSocket | null>(null);
 	/** Terminal output bridge (writers keyed by terminalId). */
@@ -523,6 +530,9 @@ export function useChat() {
 					);
 					ws.send(
 						JSON.stringify({ type: "list_commands" } satisfies ClientMessage),
+					);
+					ws.send(
+						JSON.stringify({ type: "get_commands" } satisfies ClientMessage),
 					);
 					ws.send(
 						JSON.stringify({ type: "check_update" } satisfies ClientMessage),
@@ -636,6 +646,9 @@ export function useChat() {
 						commands: msg.commands,
 						path: msg.path,
 					});
+					break;
+				case "slash_commands":
+					dispatch({ type: "slash_commands", commands: msg.commands });
 					break;
 				case "settings":
 					// The server emits the flat settings object; strip `type` and store

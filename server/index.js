@@ -18,7 +18,7 @@
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -27,6 +27,7 @@ import { spawn } from "node:child_process";
 import { WebSocket, WebSocketServer } from "ws";
 import { AgentService, previewKind, workspacePath } from "./agent-service.js";
 import { SettingsStore } from "./settings.js";
+import { ensureWindowsBash, windowsBashDir } from "./ensure-bash.js";
 
 const argv = process.argv.slice(2);
 const argvPort = argv.indexOf("--port");
@@ -136,6 +137,14 @@ const service = new AgentService(
 	join(DATA_DIR, "client-state.json"),
 	new SettingsStore(DATA_DIR),
 );
+
+// /ds-web-ui:quit — clean shutdown (flushes sessions, kills runtimes). The
+// process exits after the shutdown sequence completes; a supervisor (pm2 /
+// systemd / docker restart policy) brings it back.
+service.onQuit = () => {
+	void shutdown();
+	return true;
+};
 
 wss.on("connection", (ws) => {
 	let clientId = null;
@@ -347,6 +356,18 @@ httpServer.listen(PORT, () => {
 	console.log(`    session dir : ${SESSION_DIR_ROOT}`);
 	console.log("");
 });
+
+// Windows: ensure a bash.exe exists (Git Bash or busybox-w32 fallback) and
+// prepend its dir to PATH so the terminal and any bash-using tool agree on
+// the same shell. Fire-and-forget — never blocks startup, never throws.
+if (process.platform === "win32") {
+	ensureWindowsBash().then((bashPath) => {
+		if (bashPath) {
+			process.env.PATH = `${windowsBashDir()}${delimiter}${process.env.PATH ?? ""}`;
+			console.log(`    bash fallback: ${bashPath}`);
+		}
+	});
+}
 
 let shuttingDown = false;
 async function shutdown() {

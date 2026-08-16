@@ -68,3 +68,13 @@
   name: '@deepseek-ai/dsh-fs-local'
   config:
     cwd: !!js process.env.DSH_CWD ?? process.cwd()
+
+# Goal 模式（DSH 原生）：同会话目标状态 + 自动延续轮 + 模型目标工具。
+- id: goal
+  name: '@deepseek-ai/dsh-goal'
+
+- id: goal-round-driver
+  name: '@deepseek-ai/dsh-goal-round-driver'
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'

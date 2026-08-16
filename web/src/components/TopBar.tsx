@@ -9,6 +9,7 @@ import {
 	FiMoreHorizontal,
 	FiPlus,
 	FiSettings,
+	FiSquare,
 	FiTerminal,
 	FiVolume2,
 } from "react-icons/fi";
@@ -154,6 +155,22 @@ export function TopBar({
 			</div>
 
 			<div className="topbar-actions">
+				{/* Global interrupt — shown only WHILE a run is streaming (a hung
+				    run can always be stopped, even when the input bar is scrolled
+				    off screen). DSH has no protocol-level cancel, so this hard-kills
+				    the runtime subprocess and restarts it (the next prompt starts a
+				    fresh session). */}
+				{state?.isStreaming && (
+					<button
+						type="button"
+						className="btn interrupt active"
+						data-tip={t("interruptTip")}
+						onClick={() => send({ type: "abort" })}
+					>
+						<FiSquare />
+						<span>{t("interrupt")}</span>
+					</button>
+				)}
 				<div
 					className="view-switch"
 					role="tablist"
